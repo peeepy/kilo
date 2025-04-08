@@ -12,6 +12,8 @@
 #include <unistd.h>     // For read, write, STDIN_FILENO, STDOUT_FILENO
 #include <sys/ioctl.h>  // For ioctl, TIOCGWINSZ, struct winsize
 #include <errno.h>      // For errno, EAGAIN
+#include <dirent.h> // For directory handling
+
 
 /*** defines ***/
 
@@ -27,6 +29,57 @@
 
 #define KILO_LINE_NUMBER_WIDTH 6
 
+
+typedef struct {
+    char *name;
+    // Syntax FG/BG pairs (store "r,g,b")
+    char *hl_normal_fg; char *hl_normal_bg;
+    char *hl_comment_fg; char *hl_comment_bg;
+    char *hl_mlcomment_fg; char *hl_mlcomment_bg;
+    char *hl_keyword1_fg; char *hl_keyword1_bg;
+    char *hl_keyword2_fg; char *hl_keyword2_bg;
+    char *hl_keyword3_fg; char *hl_keyword3_bg;
+    char *hl_type_fg; char *hl_type_bg;
+    char *hl_builtin_fg; char *hl_builtin_bg;
+    char *hl_string_fg; char *hl_string_bg;
+    char *hl_number_fg; char *hl_number_bg;
+    char *hl_match_fg; char *hl_match_bg;
+    // UI Elements
+    char *ui_background_bg; // Just BG needed
+    char *ui_lineno_fg;     char *ui_lineno_bg; //
+    char *ui_status_fg;     char *ui_status_bg;
+    char *ui_message_fg;    char *ui_message_bg;
+    char *ui_tilde_fg;      char *ui_tilde_bg; //
+
+    // --- New Status Bar Segment Colors ---
+    // Mode Segment (e.g., NORMAL, INSERT)
+    char *ui_status_mode_fg;
+    char *ui_status_mode_bg;
+
+    // File Info Segment
+    char *ui_status_file_fg;
+    char *ui_status_file_bg;
+
+    // Git/Optional Info Segment (like time, day)
+    char *ui_status_info_fg;
+    char *ui_status_info_bg;
+
+    // File Type / Encoding Segment
+    char *ui_status_ft_fg;
+    char *ui_status_ft_bg;
+
+    // Position Segment (Line/Col/Percent)
+    char *ui_status_pos_fg;
+    char *ui_status_pos_bg;
+
+    // Separator Colors (Foreground is the arrow color, Background is the base)
+    // Often, the separator FG matches the BG of the section it points *from*
+    // We might derive these dynamically later, but defining them allows flexibility.
+    char *ui_status_sep_fg; // Potentially derived
+    char *ui_status_sep_bg; // Often same as ui_status_bg
+
+} editorTheme;
+
 // Define symbolic names for special keys, starting from 1000
 // to avoid collision with regular character byte values.
 enum editorKey {
@@ -39,8 +92,18 @@ enum editorKey {
   HOME_KEY,
   END_KEY,
   PAGE_UP,
-  PAGE_DOWN
+  PAGE_DOWN,
+  H_KEY = 104, // Left
+  J_KEY = 106, // down
+  K_KEY = 107, // up
+  L_KEY = 108, // right
+  D_KEY = 101, // d for delete
+  INSERT_KEY = 105, // i
+  NORMAL_KEY = 27, // esc
 };
+
+enum editorMode { MODE_NORMAL, MODE_INSERT };
+
 
 enum editorHighlight {
   HL_NORMAL = 0,
@@ -48,9 +111,12 @@ enum editorHighlight {
 	HL_MLCOMMENT,
   HL_KEYWORD1,
   HL_KEYWORD2,
+  HL_KEYWORD3,
+  HL_TYPE,
+  HL_BUILTIN,
   HL_NUMBER,
 	HL_STRING,
-	HL_MATCH
+	HL_MATCH,
 };
 
 #define HL_HIGHLIGHT_NUMBERS (1<<0)
@@ -58,13 +124,21 @@ enum editorHighlight {
 
 /*** data ***/
 struct editorSyntax {
-	char *filetype;
-	char **filematch;
-	char **keywords;
-	char *singleline_comment_start;
-  char *multiline_comment_start;
-  char *multiline_comment_end;
-	int flags;
+    char *filetype;
+    char **filematch;
+    // Separate keyword lists
+    char **keywords1;
+    char **keywords2;
+    char **keywords3;
+    char **types;
+    char **builtins;
+    // Comments and flags
+    char *singleline_comment_start;
+    char *multiline_comment_start;
+    char *multiline_comment_end;
+    int flags;
+    // Language icon to be used in status bar (UTF)
+    char *status_icon;
 };
 
 // Structure to hold a single row of text in the editor
@@ -90,10 +164,15 @@ struct editorConfig {
   erow *row;              // Pointer to an array of erow structures (the file content)
   int dirty;              // Whether the file has been modified externally since opening/saving
   char *filename;         // Pointer to the filename
+  char *dirname;          // Pointer to the dirname
   char statusmsg[80];
   time_t statusmsg_time;
-	struct editorSyntax *syntax; // Pointer to the syntax highlighting struct
+  struct editorSyntax *syntax; // Pointer to the syntax highlighting struct
+  struct editorSyntax *syntax_defs; // Dynamic array of syntax definitions
+  int num_syntax_defs;             // Number of loaded definitions
   struct termios orig_termios; // Original terminal settings to restore on exit
+  editorTheme theme; // Holds current theme colors as strings
+  enum editorMode mode; // Holds current editor mode (INSERT or NORMAL)
 };
 
 extern struct editorConfig E;
@@ -119,6 +198,9 @@ void editorUpdateSyntax(erow *row);
 int editorSyntaxToColour(int hl);
 void editorSelectSyntaxHighlight();
 int is_separator(int c); // Might be static if only used in syntax.c
+void loadSyntaxFiles(void);
+void freeSyntaxDefs(void);
+
 
 // --- Row Operations ---
 int editorRowCxToRx(erow *row, int cx);
@@ -140,6 +222,8 @@ void editorDelChar();
 char *editorRowsToString(int *buflen);
 void editorOpen(char *filename);
 void editorSave();
+char *getEditingDirname(const char *filename);
+char *findBasename(const char *path);
 
 // --- Find ---
 void editorFind();
@@ -152,8 +236,15 @@ void editorDrawStatusBar(struct abuf *ab);
 void editorDrawMessageBar(struct abuf *ab);
 void editorRefreshScreen();
 void editorSetStatusMessage(const char *fmt, ...);
+void editorClearStatusMessage();
 void abAppend(struct abuf *ab, const char *s, int len);
 void abFree(struct abuf *ab);
+
+// --- Themes -- 
+void loadTheme(const char *theme_name);
+void freeThemeColors(void);
+void applyThemeDefaultColor(struct abuf *ab);
+void applyTrueColor(struct abuf *ab, const char *fg_rgb_str, const char *bg_rgb_str);
 
 // --- Input ---
 char *editorPrompt(char *prompt, void (*callback)(char *, int));

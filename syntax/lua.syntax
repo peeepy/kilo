@@ -1,0 +1,20 @@
+# Lua Syntax Definition for Kilo
+
+filetype: lua
+filematch: .lua
+
+comment_start: --
+ml_comment_start: --[[
+ml_comment_end: --]]
+
+keywords1: if else elseif end then do while repeat until for in function local return break
+keywords2: and or not nil true false
+keywords3: require dofile loadfile pairs ipairs next type tonumber tostring print pcall xpcall setmetatable getmetatable rawget rawset rawequal collectgarbage log_message
+
+types: string number boolean table function thread userdata
+
+builtins: math string table io os coroutine debug package bit32 utf8 _G _VERSION assert error select luasocket lfs lpeg luajit ffi socket http ltn12 mime url json sqlite3 lanes love kilo
+
+flags: numbers strings
+
+language_icon: \ue620

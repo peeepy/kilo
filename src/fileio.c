@@ -20,14 +20,99 @@ char *editorRowsToString(int *buflen) {
   return buf;
 }
 
+/**
+ * @brief Extracts the directory path from the given filename.
+ * @param filename The full path to the file.
+ * @return A dynamically allocated string containing the directory path (e.g., ".", "/home/user"),
+ * or NULL if memory allocation fails. The caller must free the returned string.
+ * Returns "." if filename is NULL or has no path separator.
+ */
+char *getEditingDirname(const char *filename) {
+    char *allocated_dirname = NULL;
+
+    if (!filename) {
+        // Return "." for current directory if no filename provided
+        allocated_dirname = strdup(""); // strdup allocates memory
+        return allocated_dirname; // Return pointer (or NULL if strdup fails)
+    }
+
+    char *last_slash = strrchr(filename, '/');
+    char *last_backslash = strrchr(filename, '\\');
+    char *last_separator = NULL;
+
+    if (last_slash && last_backslash) {
+        last_separator = (last_slash > last_backslash) ? last_slash : last_backslash;
+    } else {
+        last_separator = last_slash ? last_slash : last_backslash;
+    }
+
+    if (last_separator) {
+        int dir_len = last_separator - filename;
+        allocated_dirname = malloc(dir_len + 1); // +1 for the null terminator
+        if (!allocated_dirname) {
+            perror("malloc failed in getEditingDirname");
+            return NULL; // Allocation failed
+        }
+        strncpy(allocated_dirname, filename, dir_len);
+        allocated_dirname[dir_len] = '\0';
+    } else {
+        // No separator, duplicate "." for current directory
+        allocated_dirname = strdup(".");
+        // No need to check return here, strdup returns NULL on failure anyway
+    }
+
+    return allocated_dirname;
+}
+
+// Function to find the basename part of a path
+// Returns a pointer within the original string, or a default string
+char *findBasename(const char *path) {
+    if (path == NULL) {
+        return "[No Name]";
+    }
+
+    char *last_slash = strrchr(path, '/');
+    char *last_backslash = strrchr(path, '\\');
+    char *last_separator = NULL;
+
+    if (last_slash && last_backslash) {
+        last_separator = (last_slash > last_backslash) ? last_slash : last_backslash;
+    } else {
+        last_separator = last_slash ? last_slash : last_backslash;
+    }
+
+    if (last_separator) {
+        return last_separator + 1; // Return pointer to char after the separator
+    } else {
+        return path; // No separator, the whole path is the basename
+    }
+}
+
 
 /*
  * Opens the specified file, reads its content line by line,
  * and appends each line to the editor buffer using editorAppendRow.
  */
 void editorOpen(char *filename) {
-  free(E.filename);
-  E.filename = strdup(filename); // Makes copy of the filename string & allocates rwquired memory
+    // Free old filename and dirname before getting new ones
+    free(E.filename);
+    free(E.dirname); // Free the old directory path
+    // E.filename = NULL; // Prevent using freed memory in getEditingDirname
+    // E.dirname = NULL;
+
+    E.filename = strdup(filename); // Allocate new filename
+    if (!E.filename) {
+        die("Failed to allocate memory for filename");
+    }
+
+    E.dirname = getEditingDirname(E.filename); // Allocate new dirname
+     if (!E.dirname) {
+        // Handle allocation failure
+        // Maybe free E.filename again and report error?
+        free(E.filename);
+        E.filename = NULL;
+        die("Failed to allocate memory for dirname");
+    }
 
 	editorSelectSyntaxHighlight();
 

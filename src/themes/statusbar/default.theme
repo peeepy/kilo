@@ -1,0 +1,176 @@
+void editorDrawDefaultStatusBar(struct abuf *ab) {
+    // --- Configuration ---
+    const char *separator = "\xEE\x82\xB4";      // UTF-8 U+E0B0 │ Powerline right-pointing triangle
+    const char *separator_rev = "\xEE\x82\xB6";  // UTF-8 U+E0B2 │ Powerline left-pointing triangle
+    const char *folder_icon = "\xEE\xAA\x83";    // UTF-8 U+EA83 │ Folder icon
+    const char *clock_icon = "\xEF\x80\x97";     // UTF-8 U+F017 │ Clock icon
+    const int separator_width = 1; // Assume powerline separators are 1 char wide
+    const int icon_width = 1;      // Assume icons are 1 char wide
+
+    const char *filename = findBasename(E.filename);
+
+    // --- Get Data ---
+    // Mode Mapping
+    char *mode_str;
+    switch (E.mode) {
+        case MODE_NORMAL: mode_str = "NORMAL"; break;
+        case MODE_INSERT: mode_str = "INSERT"; break;
+        default:          mode_str = "???";    break;
+    }
+
+    // Position Info
+    char pos_info[40];
+    int percentage = (E.numrows > 0) ? ((E.cy + 1) * 100 / E.numrows) : 100;
+    snprintf(pos_info, sizeof(pos_info), "%d%% %d:%d",
+             percentage, E.cy + 1, E.cx + 1);
+
+    // Language Icon (UTF-8 conversion logic seems okay, keeping it)
+    char lang_icon[10] = "\xEE\x81\x99"; // Default file icon U+E159
+    if (E.syntax && E.syntax->status_icon) {
+        if (strncmp(E.syntax->status_icon, "\\u", 2) == 0 && strlen(E.syntax->status_icon) >= 6) {
+            unsigned int code;
+            if (sscanf(E.syntax->status_icon + 2, "%x", &code) == 1) {
+                // Simple UTF-8 encoding (assuming valid Unicode code points)
+                 if (code <= 0x7F) {
+                    lang_icon[0] = (char)code; lang_icon[1] = '\0';
+                 } else if (code <= 0x7FF) {
+                    lang_icon[0] = 0xC0 | (code >> 6); lang_icon[1] = 0x80 | (code & 0x3F); lang_icon[2] = '\0';
+                 } else if (code <= 0xFFFF) {
+                    lang_icon[0] = 0xE0 | (code >> 12); lang_icon[1] = 0x80 | ((code >> 6) & 0x3F); lang_icon[2] = 0x80 | (code & 0x3F); lang_icon[3] = '\0';
+                 } else if (code <= 0x10FFFF) {
+                    lang_icon[0] = 0xF0 | (code >> 18); lang_icon[1] = 0x80 | ((code >> 12) & 0x3F); lang_icon[2] = 0x80 | ((code >> 6) & 0x3F); lang_icon[3] = 0x80 | (code & 0x3F); lang_icon[4] = '\0';
+                 } else {
+                     // Invalid code point, use default
+                     strcpy(lang_icon, "\xEF\xBF\xBD"); // U+FFFD REPLACEMENT CHARACTER
+                 }
+            }
+        } else {
+            strncpy(lang_icon, E.syntax->status_icon, sizeof(lang_icon) - 1);
+            lang_icon[sizeof(lang_icon) - 1] = '\0';
+        }
+    }
+
+    // Time
+    time_t now = time(NULL);
+    struct tm *tm_info = localtime(&now);
+    char time_str[10];
+    strftime(time_str, sizeof(time_str), "%H:%M", tm_info);
+
+    // --- Default Colors ---
+    // Use file colors as fallback for info colors if not defined in theme
+    char *info_bg = E.theme.ui_status_info_bg ? E.theme.ui_status_info_bg : E.theme.ui_status_file_bg;
+    char *info_fg = E.theme.ui_status_info_fg ? E.theme.ui_status_info_fg : E.theme.ui_status_file_fg;
+    // Ensure base status colors exist
+    char *status_bg = E.theme.ui_status_bg ? E.theme.ui_status_bg : "#222222"; // Default dark grey
+    char *status_fg = E.theme.ui_status_fg ? E.theme.ui_status_fg : "#cccccc"; // Default light grey
+
+    // --- Prepare Buffers ---
+    struct abuf sb_left = ABUF_INIT;
+    struct abuf sb_right = ABUF_INIT;
+    int visible_left_width = 0;
+    int visible_right_width = 0;
+
+    // --- Build Left Side (sb_left) ---
+    // Segment 1: Mode
+    applyTrueColor(&sb_left, E.theme.ui_status_mode_fg, E.theme.ui_status_mode_bg);
+    abAppend(&sb_left, " ", 1); visible_left_width += 1;
+    abAppend(&sb_left, mode_str, strlen(mode_str)); visible_left_width += calculate_visible_length(mode_str);
+    abAppend(&sb_left, " ", 1); visible_left_width += 1;
+
+    // Separator -> Dir/File
+    char *left_sep1_next_bg = (strlen(E.dirname) > 0) ? E.theme.ui_status_ft_bg : E.theme.ui_status_file_bg;
+    applyTrueColor(&sb_left, E.theme.ui_status_mode_bg, left_sep1_next_bg);
+    abAppend(&sb_left, separator, strlen(separator)); visible_left_width += separator_width;
+
+    // Segment 2: Directory (Optional)
+    if (strlen(E.dirname) > 0) {
+        applyTrueColor(&sb_left, E.theme.ui_status_ft_fg, E.theme.ui_status_ft_bg);
+        abAppend(&sb_left, " ", 1); visible_left_width += 1;
+        abAppend(&sb_left, folder_icon, strlen(folder_icon)); visible_left_width += icon_width;
+        abAppend(&sb_left, " ", 1); visible_left_width += 1;
+        abAppend(&sb_left, E.dirname, strlen(E.dirname)); visible_left_width += calculate_visible_length(E.dirname);
+        abAppend(&sb_left, " ", 1); visible_left_width += 1;
+
+        // Separator -> File
+        applyTrueColor(&sb_left, E.theme.ui_status_ft_bg, E.theme.ui_status_file_bg);
+        abAppend(&sb_left, separator, strlen(separator)); visible_left_width += separator_width;
+    }
+
+    // Segment 3: Filename
+    applyTrueColor(&sb_left, E.theme.ui_status_file_fg, E.theme.ui_status_file_bg);
+    abAppend(&sb_left, " ", 1); visible_left_width += 1;
+    abAppend(&sb_left, lang_icon, strlen(lang_icon)); visible_left_width += icon_width;
+    abAppend(&sb_left, " ", 1); visible_left_width += 1;
+    abAppend(&sb_left, filename, strlen(filename)); visible_left_width += calculate_visible_length(filename);
+    abAppend(&sb_left, " ", 1); visible_left_width += 1;
+
+    // Final Separator (Left Side) -> Background
+    // Use the background of the last segment (file) as the foreground for the separator
+    applyTrueColor(&sb_left, E.theme.ui_status_file_bg, status_bg); // FG = File BG, BG = Status BG
+    abAppend(&sb_left, separator, strlen(separator)); // Use the standard forward separator
+    visible_left_width += separator_width;
+    
+    // --- Build Right Side (sb_right) ---
+    // Build in reverse visual order so separators appear correctly when right-aligned
+
+    applyTrueColor(&sb_right, E.theme.ui_status_pos_bg, status_bg); // FG=Status BG, BG=Position BG
+    abAppend(&sb_right, separator_rev, strlen(separator_rev)); // Left-pointing separator (◄)
+    visible_right_width += separator_width;
+
+    // Then add the position segment
+    applyTrueColor(&sb_right, E.theme.ui_status_pos_fg, E.theme.ui_status_pos_bg);
+    abAppend(&sb_right, " ", 1); visible_right_width += 1;
+    abAppend(&sb_right, pos_info, strlen(pos_info)); visible_right_width += calculate_visible_length(pos_info);
+    abAppend(&sb_right, " ", 1); visible_right_width += 1;
+
+    // Separator: Position -> Time (will appear on the RIGHT of position)
+    applyTrueColor(&sb_right, E.theme.ui_status_pos_bg, info_bg); // FG=Pos BG, BG=Time BG
+    abAppend(&sb_right, separator, strlen(separator)); // Right-pointing separator (►)
+    visible_right_width += separator_width;
+
+    // Segment 2: Time
+    applyTrueColor(&sb_right, info_fg, info_bg);
+    abAppend(&sb_right, " ", 1); visible_right_width += 1;
+    abAppend(&sb_right, clock_icon, strlen(clock_icon)); visible_right_width += icon_width;
+    abAppend(&sb_right, " ", 1); visible_right_width += 1;
+    abAppend(&sb_right, time_str, strlen(time_str)); visible_right_width += calculate_visible_length(time_str);
+    abAppend(&sb_right, " ", 1); visible_right_width += 1;
+
+    // Separator: Time -> Background (Visually Leftmost on Right Side)
+    applyTrueColor(&sb_right, info_bg, status_bg); // FG=Time BG, BG=Status BG
+    // visible_right_width += separator_width;
+
+
+    // --- Assemble Final Status Bar ---
+    // Clear the line with the base status background color first
+    applyTrueColor(ab, NULL, status_bg); // Set BG only
+    abAppend(ab, "\x1b[K", 3);            // Clear Line with current BG
+
+    // Append Left Side
+    abAppend(ab, sb_left.b, sb_left.len);
+
+    // Calculate and Append Padding
+    applyTrueColor(ab, status_fg, status_bg); // Set color for the padding spaces
+    int padding = E.screencols - visible_left_width - visible_right_width;
+    if (padding < 0) padding = 0; // Ensure padding isn't negative
+    for (int i = 0; i < padding; i++) {
+        abAppend(ab, " ", 1);
+    }
+
+    // Append Right Side
+    // IMPORTANT: The right buffer sb_right was built visually backwards,
+    // but appending the whole buffer makes it appear correctly aligned right.
+    abAppend(ab, sb_right.b, sb_right.len);
+
+    // Reset colors to terminal default at the end of the line
+    applyThemeDefaultColor(ab); // Or use "\x1b[m" or "\x1b[0m" if you don't have that func
+
+    // Add newline (though status bars usually don't need one unless it's the very last line of output)
+    // Consider removing this if it causes an extra blank line
+    abAppend(ab, "\r\n", 2);
+
+
+    // Free temporary buffers
+    abFree(&sb_left);
+    abFree(&sb_right);
+}

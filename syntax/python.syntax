@@ -1,0 +1,22 @@
+# Python Syntax Definition for Kilo
+
+filetype: python
+filematch: .py .pyw
+
+# Primary keywords (control flow, definitions, etc.)
+keywords1: if else elif for while break continue pass try except finally raise assert with yield return def class import from as lambda global nonlocal del
+
+# Secondary keywords (built-in types, constants, common functions/methods)
+keywords2: True False None int float str list dict set tuple bool bytes object type print len range super self cls Exception ValueError TypeError IndexError KeyError AttributeError NotImplementedError
+
+# Comments (Python only uses single-line comments)
+comment_start: #
+# ml_comment_start:   (Leave empty or omit - Python uses # or docstrings)
+# ml_comment_end:     (Leave empty or omit)
+
+# Enable highlighting for numbers and "..."/'...' strings
+flags: numbers strings
+
+language_icon: \ue73c
+
+builtins: print len range super self cls Exception ValueError TypeError IndexError KeyError AttributeError NotImplementedError abs all any ascii bin chr compile complex dir divmod enumerate eval exec filter format getattr globals hasattr hash help hex id input isinstance issubclass iter max min next oct ord pow repr reversed round slice sorted sum vars zip # Common built-ins

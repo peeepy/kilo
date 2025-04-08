@@ -1,0 +1,23 @@
+# JavaScript Syntax Definition for Kilo
+
+filetype: javascript
+filematch: .js .mjs .cjs .jsx .ts .tsx
+
+# Primary keywords (control flow, definitions, operators acting like keywords)
+keywords1: if else for while do switch case break continue try catch finally throw return function class constructor extends import export from default as let const var yield async await debugger
+
+# Secondary keywords (built-in types, constants, global objects/functions)
+keywords2: true false null undefined NaN Infinity delete void with new typeof instanceof this arguments
+
+# Comments
+comment_start: //
+ml_comment_start: /*
+ml_comment_end: */
+
+# Enable highlighting for numbers and "..."/'...' strings (won't handle template literals)
+flags: numbers strings
+
+language_icon: \ue781
+
+types: Object Array String Number Boolean Function Promise Map Set Symbol WeakMap WeakSet # Built-in constructor/types
+builtins: Math JSON console document window navigator location history screen require module process global # Common global objects/functions (env-dependent)

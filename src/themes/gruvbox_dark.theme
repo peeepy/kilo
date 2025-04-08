@@ -1,0 +1,57 @@
+# Kilo Gruvbox Dark Theme
+# Based on standard Gruvbox palette: https://github.com/morhetz/gruvbox
+name: Gruvbox Dark
+
+# --- Syntax Highlighting (FG = Foreground, BG = Background) ---
+# Using explicit background color 'bg'
+
+# Normal text (variables, punctuation) - fg
+HL_NORMAL_FG: 235,219,178
+HL_NORMAL_BG: 44,40,38
+
+# Comments - gray
+HL_COMMENT_FG: 146,131,116
+HL_COMMENT_BG: 44,40,38
+HL_MLCOMMENT_FG: 146,131,116
+HL_MLCOMMENT_BG: 44,40,38
+
+# Primary Keywords (if, while, fn, struct, let, etc) - red
+HL_KEYWORD1_FG: 251,73,52
+HL_KEYWORD1_BG: 44,40,38
+
+# Secondary Keywords (return, break, continue, static, const?) - green
+HL_KEYWORD2_FG: 184,187,38
+HL_KEYWORD2_BG: 44,40,38
+
+# Tertiary Keywords (Maybe constants like TRUE/FALSE if defined?) - yellow
+HL_KEYWORD3_FG: 250,189,47
+HL_KEYWORD3_BG: 44,40,38
+
+# Types (Dispatcher, String, u32, etc) - blue
+HL_TYPE_FG: 131,165,152
+HL_TYPE_BG: 44,40,38
+
+# Builtins / Function Calls / Methods - aqua
+HL_BUILTIN_FG: 142,192,124
+HL_BUILTIN_BG: 44,40,38
+
+# Strings - green (same as keyword2)
+HL_STRING_FG: 184,187,38
+HL_STRING_BG: 44,40,38
+
+# Numbers - purple
+HL_NUMBER_FG: 211,134,155
+HL_NUMBER_BG: 44,40,38
+
+# Search Matches - bg color text on a lighter gray background
+HL_MATCH_FG: 44,40,38
+HL_MATCH_BG: 168,153,132
+
+# --- UI Elements ---
+UI_BACKGROUND_BG: 44,40,38      # Editor background (bg)
+UI_LINENO_FG: 146,131,116     # Line numbers FG (gray)
+UI_STATUS_FG: 235,219,178    # Status bar FG (fg)
+UI_STATUS_BG: 80,73,69       # Status bar BG (bg2 - darker gray)
+UI_MESSAGE_FG: 235,219,178   # Message bar FG (fg)
+UI_MESSAGE_BG: 44,40,38      # Message bar BG (bg - same as editor)
+UI_TILDE_FG: 131,165,152   # Color for '~' chars (blue)

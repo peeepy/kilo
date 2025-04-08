@@ -92,6 +92,7 @@ void editorMoveCursor(int key) {
     erow *row = (E.cy >= E.numrows) ? NULL : &E.row[E.cy];
 
     switch (key) {
+        case H_KEY:
         case ARROW_LEFT:
             if (E.cx != 0) {
                 E.cx--; // Move left within the line
@@ -101,6 +102,7 @@ void editorMoveCursor(int key) {
                 E.cx = E.row[E.cy].size;
             }
             break;
+        case L_KEY:
         case ARROW_RIGHT:
             if (row && E.cx < row->size) {
                 E.cx++; // Move right within the line
@@ -110,11 +112,13 @@ void editorMoveCursor(int key) {
                 E.cx = 0;
             }
             break;
+        case K_KEY:
         case ARROW_UP:
             if (E.cy != 0) {
                 E.cy--; // Move up one row
             }
             break;
+        case J_KEY:
         case ARROW_DOWN:
             if (E.cy < E.numrows) { // Allow moving cursor one line past the last line
                 E.cy++; // Move down one row
@@ -138,84 +142,165 @@ void editorMoveCursor(int key) {
 void editorProcessKeypress() {
   static int quit_times = KILO_QUIT_TIMES;
 
-  int c = editorReadKey(); // Get the next keypress (char or special key code)
+  int c = editorReadKey();
 
+  // Global keys that work in both modes
   switch (c) {
-    case '\r':
-      editorInsertNewline();
-      break;
-
     case CTRL_KEY('q'):
       if (E.dirty && quit_times > 0) {
         editorSetStatusMessage("WARNING! File has unsaved changes. "
-          "Press Ctrl-Q %d more times to quit.", quit_times);
+                               "Press Ctrl-Q %d more times to quit.", quit_times);
         quit_times--;
-        return;
+        return; // Return early to avoid resetting quit_times
       }
-
       write(STDOUT_FILENO, "\x1b[2J", 4);
       write(STDOUT_FILENO, "\x1b[H", 3);
       exit(0);
-      break;
+      break; // Technically unreachable but good practice
 
     case CTRL_KEY('s'):
       editorSave();
-      break;
-
-    case HOME_KEY:
-        E.cx = 0; // Move cursor to beginning of the line
-        break;
-
-    case END_KEY:
-        // Move cursor to end of the current line content
-          if (E.cy < E.numrows) // Check if cursor is on a valid line
-              E.cx = E.row[E.cy].size;
-        break;
+      quit_times = KILO_QUIT_TIMES; // Reset quit counter on successful save or attempt
+      return; // Return early
 
     case CTRL_KEY('f'):
-      editorFind();
-      break;
+        editorFind();
+        quit_times = KILO_QUIT_TIMES;
+        return; // Return early
 
-    case BACKSPACE:
-    case CTRL_KEY('h'):
-    case DEL_KEY:
-      if (c == DEL_KEY) editorMoveCursor(ARROW_RIGHT);
-      editorDelChar();
-      break;
+    case CTRL_KEY('t'):
+      {
+          char *theme_name = editorPrompt("Theme file name: %s", NULL);
+          if (theme_name == NULL) {
+              editorSetStatusMessage("Theme change cancelled");
+          } else {
+              if (theme_name[0] != '\0') {
+                  loadTheme(theme_name);
+                  // Status message might be set by loadTheme or here
+                  // editorSetStatusMessage("Theme loaded: %s", theme_name); // Example
+              } else {
+                  editorSetStatusMessage("No theme name entered");
+              }
+              free(theme_name);
+          }
+      }
+      quit_times = KILO_QUIT_TIMES;
+      return; // Return early
+  }
 
-    case PAGE_UP:
-    case PAGE_DOWN:
-        { // Block scope for variable declaration
-            // Move cursor up/down by a full screen height
+  // Mode-specific keys
+  if (E.mode == MODE_NORMAL) {
+    switch (c) {
+      case INSERT_KEY:
+        E.mode = MODE_INSERT;
+        break;
+      case H_KEY:
+      case J_KEY:
+      case K_KEY:
+      case L_KEY:
+        editorMoveCursor(c);
+        break;
+      case D_KEY: // Use D_KEY for delete
+        // Ensure cursor is not past the end of the line before moving right
+        if (E.cy < E.numrows && E.cx < E.row[E.cy].size) {
+            editorMoveCursor(ARROW_RIGHT);
+        }
+        editorDelChar();
+        break;
+       // Add other normal mode commands here later (e.g., Home, End, Page keys if desired in normal)
+       // Maybe map arrow keys here too if you want them in normal mode eventually
+      case HOME_KEY:
+          E.cx = 0;
+          break;
+      case END_KEY:
+          if (E.cy < E.numrows)
+              E.cx = E.row[E.cy].size;
+          break;
+      case PAGE_UP:
+      case PAGE_DOWN:
+          {
+              if (c == PAGE_UP) {
+                  E.cy = E.rowoff;
+              } else if (c == PAGE_DOWN) {
+                  E.cy = E.rowoff + E.screenrows - 1;
+                  if (E.cy > E.numrows) E.cy = E.numrows;
+              }
+              int times = E.screenrows;
+              while (times--)
+                  editorMoveCursor(c == PAGE_UP ? ARROW_UP : ARROW_DOWN);
+          }
+          break;
+      // Ignore other keys for now
+      default:
+        break;
+    }
+  } else { // MODE_INSERT
+    switch (c) {
+      case NORMAL_KEY: // Use NORMAL_KEY defined in kilo.h (likely mapped to Esc)
+        E.mode = MODE_NORMAL;
+        // Optional: Move cursor left to match Vim behavior exiting insert
+        // if (E.cx > 0) editorMoveCursor(ARROW_LEFT);
+        break;
+      case '\r':
+        editorInsertNewline();
+        break;
+      case BACKSPACE:
+      case CTRL_KEY('h'):
+      case DEL_KEY:
+        if (c == DEL_KEY && E.cy < E.numrows && E.cx < E.row[E.cy].size) {
+             editorMoveCursor(ARROW_RIGHT);
+        }
+        editorDelChar();
+        break;
+      case HOME_KEY:
+        E.cx = 0;
+        break;
+      case END_KEY:
+        if (E.cy < E.numrows)
+           E.cx = E.row[E.cy].size;
+        break;
+      case PAGE_UP:
+      case PAGE_DOWN:
+        {
             if (c == PAGE_UP) {
-                E.cy = E.rowoff; // Move cursor to top of screen
+                E.cy = E.rowoff;
             } else if (c == PAGE_DOWN) {
-                E.cy = E.rowoff + E.screenrows - 1; // Move cursor to bottom
-                if (E.cy > E.numrows) E.cy = E.numrows; // Don't go past end of file
+                E.cy = E.rowoff + E.screenrows - 1;
+                if (E.cy > E.numrows) E.cy = E.numrows;
             }
-
             int times = E.screenrows;
-            while (times--) // Simulate multiple arrow key presses
+            while (times--)
                 editorMoveCursor(c == PAGE_UP ? ARROW_UP : ARROW_DOWN);
         }
         break;
-
-    // Arrow keys delegate to editorMoveCursor
-    case ARROW_UP:
-    case ARROW_DOWN:
-    case ARROW_LEFT:
-    case ARROW_RIGHT:
+      case ARROW_UP:
+      case ARROW_DOWN:
+      case ARROW_LEFT:
+      case ARROW_RIGHT:
         editorMoveCursor(c);
         break;
-    
-    case CTRL_KEY('l'):
-    case '\x1b':
+
+      // case '\x1b': // Handle raw escape if NORMAL_KEY wasn't matched or is different
+      //     // Can optionally map this to switch to normal mode too as a fallback
+      //     // E.mode = MODE_NORMAL;
+      //     // editorSetStatusMessage("");
+      //     break; // Or just ignore if NORMAL_KEY handles it
+
+        // Typically redraw screen, often mapped to Esc too
+      case CTRL_KEY('l'):
+        editorRefreshScreen();
         break;
 
-    default:
-      editorInsertChar(c);
-      break;
+      default:
+        // Insert character if it's printable ASCII
+        if (!iscntrl(c) && c < 128) {
+          editorInsertChar(c);
+        }
+        break;
+    }
   }
 
+  // Reset quit counter if any key other than Ctrl+Q (when dirty) was pressed
+  // This happens unless we returned early inside the Ctrl+Q logic
   quit_times = KILO_QUIT_TIMES;
 }

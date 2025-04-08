@@ -1,0 +1,95 @@
+name: Rose Pine
+
+# Rosé Pine Palette Reference (Hex):
+# Base:    #191724
+# Surface: #1f1d2e
+# Overlay: #26233a
+# Muted:   #6e6a86
+# Subtle:  #908caa
+# Text:    #e0def4
+# Love:    #eb6f92 (Pink/Red)
+# Gold:    #f6c177 (Yellow/Orange)
+# Rose:    #ebbcba (Lighter Pink)
+# Pine:    #31748f (Blue/Teal)
+# Foam:    #9ccfd8 (Lighter Blue/Cyan)
+# Iris:    #c4a7e7 (Purple)
+# HL Low:  #21202e
+# HL Med:  #403d52
+# HL High: #524f67
+
+# --- Syntax Highlighting (FG = Foreground, BG = Background) ---
+
+# Background - using Base
+HL_NORMAL_BG: 25,23,36      # Base (#191724)
+
+# Normal text - using Text
+HL_NORMAL_FG: 224,222,244   # Text (#e0def4)
+
+# Comments - using Muted
+HL_COMMENT_FG: 110,106,134  # Muted (#6e6a86)
+HL_COMMENT_BG: 25,23,36      # Base (#191724)
+HL_MLCOMMENT_FG: 110,106,134  # Muted (#6e6a86)
+HL_MLCOMMENT_BG: 25,23,36      # Base (#191724)
+
+# Keywords (impl, pub, fn, let, if, while) - using Love
+HL_KEYWORD1_FG: 235,111,146   # Love (#eb6f92)
+HL_KEYWORD1_BG: 25,23,36      # Base (#191724)
+
+# Secondary Keywords (trait, move, mut) - using Iris
+HL_KEYWORD2_FG: 196,167,231   # Iris (#c4a7e7)
+HL_KEYWORD2_BG: 25,23,36      # Base (#191724)
+
+# Tertiary Keywords - also using Iris (or could use Love/Pine depending on preference)
+HL_KEYWORD3_FG: 196,167,231   # Iris (#c4a7e7)
+HL_KEYWORD3_BG: 25,23,36      # Base (#191724)
+
+# Types (Dispatcher, Self, Output, Duration) - using Foam
+HL_TYPE_FG: 156,207,216   # Foam (#9ccfd8)
+HL_TYPE_BG: 25,23,36      # Base (#191724)
+
+# Function calls and methods - using Pine
+HL_BUILTIN_FG: 49,116,143    # Pine (#31748f)
+HL_BUILTIN_BG: 25,23,36      # Base (#191724)
+
+# Strings - using Gold
+HL_STRING_FG: 246,193,119   # Gold (#f6c177)
+HL_STRING_BG: 25,23,36      # Base (#191724)
+
+# Numbers - using Rose
+HL_NUMBER_FG: 235,188,186   # Rose (#ebbcba)
+HL_NUMBER_BG: 25,23,36      # Base (#191724)
+
+# Search Matches - using Text on Highlight Med background
+HL_MATCH_FG: 224,222,244   # Text (#e0def4)
+HL_MATCH_BG: 64,61,82      # Highlight Med (#403d52)
+
+# --- UI Elements ---
+UI_BACKGROUND_BG: 25,23,36      # Base (#191724) - Editor background
+UI_LINENO_FG: 110,106,134   # Muted (#6e6a86) - Line numbers
+UI_TILDE_FG: 144,140,170   # Subtle (#908caa) - Tildes for empty lines
+
+# Status bar and message bar colors
+UI_STATUS_FG: 224,222,244   # Text (#e0def4) - Default status text
+UI_STATUS_BG: 31,29,46      # Surface (#1f1d2e) - Default status background
+UI_MESSAGE_FG: 224,222,244   # Text (#e0def4) - Message text
+UI_MESSAGE_BG: 25,23,36      # Base (#191724) - Message background
+
+# Mode Segment (e.g., NORMAL, INSERT) - Using Gold background, Base text for clear contrast
+UI_STATUS_MODE_FG: 25,23,36      # Base (#191724) - Dark text on Gold
+UI_STATUS_MODE_BG: 246,193,119   # Gold (#f6c177) - Gold background stands out
+
+# File Info Segment (Filename, modified status) - Using Overlay background for subtle difference
+UI_STATUS_FILE_FG: 224,222,244   # Text (#e0def4) - Standard text color
+UI_STATUS_FILE_BG: 38,35,58      # Overlay (#26233a) - Slightly distinct background
+
+# File Type Segment (e.g., c, txt) - Matching the File Info segment BG
+UI_STATUS_FT_FG: 224,222,244   # Text (#e0def4) - Standard text color
+UI_STATUS_FT_BG: 38,35,58      # Overlay (#26233a) - Matching file info BG
+
+# Position Segment (Line:Col %) - Using Foam text color on default background
+UI_STATUS_POS_FG: 156,207,216   # Foam (#9ccfd8) - Foam text adds subtle color
+UI_STATUS_POS_BG: 31,29,46      # Surface (#1f1d2e) - Default status background
+
+# Info Segment (Directory path, Time) - Using default status colors
+UI_STATUS_INFO_FG: 224,222,244   # Text (#e0def4) - Standard text color
+UI_STATUS_INFO_BG: 31,29,46      # Surface (#1f1d2e) - Default status background

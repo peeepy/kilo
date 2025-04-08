@@ -1,0 +1,20 @@
+# C/C++ Syntax Definition for Kilo
+
+filetype: c
+filematch: .c .h .cpp
+
+comment_start: //
+ml_comment_start: /*
+ml_comment_end: */
+
+keywords1: if else switch case default for while do break continue return goto sizeof
+keywords2: const volatile extern register static inline restrict auto
+keywords3: #include #define #ifndef #endif
+
+types: int long short char void signed unsigned float double struct union enum typedef _Bool _Complex * &
+
+builtins: NULL EOF stdout stdin stderr printf scanf sprintf sscanf fopen fclose fread fwrite fseek ftell rewind malloc calloc realloc free exit abort assert time
+
+flags: numbers strings
+
+language_icon: \ue61e

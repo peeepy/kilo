@@ -13,6 +13,7 @@ void die(const char* s) {
 
   // Print the error message associated with the last system call error (errno)
   perror(s);
+  
   exit(1);
 }
 
