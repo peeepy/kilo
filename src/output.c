@@ -504,9 +504,8 @@ void editorDrawDefaultStatusBar(struct abuf *ab) {
 
      // Reset terminal colors completely at the end of the status bar
      applyThemeDefaultColor(ab);
-     // No need for \r\n here, editorRefreshScreen handles moving to the next line implicitly
-     // or editorDrawMessageBar will overwrite this line. If message bar is optional, might need \r\n.
-     // Let's assume message bar always draws.
+             // This ensures we always move to the next line before the message bar.
+     abAppend(ab, "\r\n", 2);
 
      // Free temporary buffers
      abFree(&sb_left);
@@ -514,16 +513,14 @@ void editorDrawDefaultStatusBar(struct abuf *ab) {
 }
 
 
-// Draw status bar using Lua configuration (Direct Rendering Version)
+// Draw status bar using Lua configuration
 void editorDrawStatusBar(struct abuf *ab) {
-    lua_State *L = getLuaState(); // Assuming getLuaState() is defined in k_lua.h/c
+    lua_State *L = getLuaState(); // Assuming getLuaState() is defined
 
-    // Ensure statusbar_callback_ref is defined and initialized (e.g., in k_lua.c)
-    // extern int statusbar_callback_ref; // Make sure this is accessible
-
+    // Ensure statusbar_callback_ref is defined and initialized
     if (!L || statusbar_callback_ref == LUA_NOREF) {
-        editorSetStatusMessage("Lua not ready or no callback");
-        // editorDrawDefaultStatusBar(ab); // Fallback to default C bar if Lua not ready or no callback
+        // showDebugOnError("Failed to draw status bar: Lua not ready or no callback"); // Optional debug
+        editorDrawDefaultStatusBar(ab); // Fallback
         return;
     }
 
@@ -531,77 +528,80 @@ void editorDrawStatusBar(struct abuf *ab) {
     lua_rawgeti(L, LUA_REGISTRYINDEX, statusbar_callback_ref);
     if (lua_pcall(L, 0, 2, 0) != LUA_OK) {
         const char *error_msg = lua_tostring(L, -1);
-        editorSetStatusMessage("Status bar Lua error: %s", error_msg ? error_msg : "unknown");
+        showDebugOnError(error_msg ? error_msg : "unknown error in status bar Lua function");
         lua_pop(L, 1); // Pop error message
-        // editorDrawDefaultStatusBar(ab); // Fallback on error
+        editorDrawDefaultStatusBar(ab); // Fallback on error
         return;
     }
 
     // --- Parse Lua Return Values ---
-    // Expects: table segments [, table options]
     int segments_idx = -2;
     int options_idx = -1;
-
-    // Determine which return values are tables
-    int top = lua_gettop(L);
     int has_options = 0;
+    int top = lua_gettop(L);
 
-    if (top >= 1 && lua_istable(L, -1)) { // Top is options or segments
-        if (top >= 2 && lua_istable(L, -2)) { // Both tables provided
-            segments_idx = -2;
-            options_idx = -1;
-            has_options = 1;
-        } else { // Only one table provided, assume it's segments
-            segments_idx = -1;
-            options_idx = 0; // Indicate no options table
-            has_options = 0;
+    if (top >= 1 && lua_istable(L, -1)) {
+        if (top >= 2 && lua_istable(L, -2)) {
+            segments_idx = -2; options_idx = -1; has_options = 1;
+        } else {
+            segments_idx = -1; options_idx = 0; has_options = 0;
         }
     } else {
-        // Invalid return type(s)
-        editorSetStatusMessage("Status bar Lua function must return a table of segments");
+        showDebugOnError("Failed to draw status bar: Must return a table of segments");
         lua_pop(L, top); // Clear the stack
-        // editorDrawDefaultStatusBar(ab);
+        editorDrawDefaultStatusBar(ab);
         return;
     }
 
-
     // --- Default & Parsed Options ---
-    int statusbar_height = 1; // Default height is 1 line
-    // Use theme defaults, allow Lua override
-    char *status_bg = E.theme.ui_status_bg ? E.theme.ui_status_bg : "#282828"; // Fallback default
-    char *status_fg = E.theme.ui_status_fg ? E.theme.ui_status_fg : "#ebdbb2"; // Fallback default
+    int statusbar_height = 1;
+         // --- Define Segment Colors (using theme or fallbacks) ---
+     // Helper macro for getting theme color or fallback
+     #define GET_COLOR(theme_field, fallback) (E.theme.theme_field ? E.theme.theme_field : fallback)
+
+     char *mode_fg = GET_COLOR(ui_status_mode_fg, "#000000"); // Black text
+     char *mode_bg = GET_COLOR(ui_status_mode_bg, "#98971a"); // Green bg
+     char *file_fg = GET_COLOR(ui_status_file_fg, "#ffffff"); // White text
+     char *file_bg = GET_COLOR(ui_status_file_bg, "#504945"); // Dark gray bg
+     char *ft_fg = GET_COLOR(ui_status_ft_fg, file_fg);      // Inherit from file fg
+     char *ft_bg = GET_COLOR(ui_status_ft_bg, file_bg);      // Inherit from file bg
+     char *pos_fg = GET_COLOR(ui_status_pos_fg, file_fg);      // Inherit from file fg
+     char *pos_bg = GET_COLOR(ui_status_pos_bg, "#665c54"); // Mid gray bg
+     char *info_fg = GET_COLOR(ui_status_info_fg, file_fg);     // Inherit from file fg
+     char *info_bg = GET_COLOR(ui_status_info_bg, file_bg);     // Inherit from file bg
+     char *status_bg = GET_COLOR(ui_status_bg, "#282828");   // Default status bg
+     char *status_fg = GET_COLOR(ui_status_fg, "#ebdbb2");   // Default status fg
+     char *dirty_fg = GET_COLOR(hl_keyword1_fg, "#fb4934"); // Use a highlight color for dirty indicator
+
+     #undef GET_COLOR // Undefine macro after use
 
     if (has_options) {
         lua_getfield(L, options_idx, "height");
         if (lua_isnumber(L, -1)) {
-             statusbar_height = lua_tointeger(L, -1);
-             if (statusbar_height < 1) statusbar_height = 1; // Min height 1
-             // Add a reasonable max height?
-             // if (statusbar_height > E.screenrows -1) statusbar_height = E.screenrows -1; // Avoid overlap
-             if (statusbar_height > 5) statusbar_height = 5; // Arbitrary max
+            statusbar_height = lua_tointeger(L, -1);
+            if (statusbar_height < 1) statusbar_height = 1;
+            if (statusbar_height > 5) statusbar_height = 5; // Limit max height
         }
-        lua_pop(L, 1); // Pop height or nil
+        lua_pop(L, 1);
 
         lua_getfield(L, options_idx, "bg");
         if (lua_isstring(L, -1)) {
-             const char *n = lua_tostring(L, -1);
-             char* t = getThemeColorByName(n); // Check theme first
-             if(t) status_bg = t;
-             else if(n[0] == '#') status_bg = (char*)n; // Allow direct hex codes
+            const char *n = lua_tostring(L, -1);
+            char* t = getThemeColorByName(n); // Check theme map first
+            if(t) status_bg = t; else if(n[0] == '#') status_bg = (char*)n; // Allow direct hex
         }
-        lua_pop(L, 1); // Pop bg or nil
+        lua_pop(L, 1);
 
         lua_getfield(L, options_idx, "fg");
         if (lua_isstring(L, -1)) {
-             const char *n = lua_tostring(L, -1);
-             char* t = getThemeColorByName(n);
-             if(t) status_fg = t;
-             else if(n[0] == '#') status_fg = (char*)n;
+            const char *n = lua_tostring(L, -1);
+            char* t = getThemeColorByName(n);
+            if(t) status_fg = t; else if(n[0] == '#') status_fg = (char*)n;
         }
-        lua_pop(L, 1); // Pop fg or nil
+        lua_pop(L, 1);
     }
 
-    // Clamp statusbar height based on available screen rows (leave space for message bar)
+    // Clamp statusbar height based on available screen rows
     if (statusbar_height >= E.screenrows) {
         statusbar_height = E.screenrows - 1;
         if (statusbar_height < 1) statusbar_height = 1; // Ensure at least 1 if possible
@@ -609,214 +609,167 @@ void editorDrawStatusBar(struct abuf *ab) {
 
     // Define structure for collected segment data
     typedef struct {
-        const char *text; // Includes ANSI codes, points to Lua string (careful!)
+        const char *text; // Pointer to Lua string (includes ANSI)
         char *fg;
         char *bg;
-        int width; // Visual width (ANSI stripped, wcwidth calculated)
-        int alignment; // 0=left, 1=center (not implemented), 2=right
+        int width;       // Visual width (ANSI stripped)
+        int alignment;   // 0=left, 1=center(unused), 2=right
     } SegmentData;
-
 
     // --- Loop Through Each Status Bar Line ---
     for (int line_idx = 0; line_idx < statusbar_height; line_idx++) {
 
         // --- Collect Segments for this specific line ---
         lua_Integer segment_count_raw = lua_rawlen(L, segments_idx);
-        // Check for potential overflow if segment_count_raw is huge
-        if (segment_count_raw > INT_MAX) {
-             editorSetStatusMessage("Error: Too many status bar segments");
-             segment_count_raw = INT_MAX; // Prevent overflow in malloc/loop
+        if (segment_count_raw > INT_MAX || segment_count_raw < 0) { // Added check for negative result
+             showDebugOnError("Failed to draw status bar: Invalid segment count from Lua");
+             segment_count_raw = 0; // Treat as zero segments
         }
         int segment_count = (int)segment_count_raw;
 
         // Use dynamic allocation, check for failure
-        SegmentData *line_segments = malloc(sizeof(SegmentData) * segment_count);
-        if (!line_segments && segment_count > 0) { // Check segment_count > 0 avoids malloc(0) issues
-             editorSetStatusMessage("Error: Status bar segment memory allocation failed");
-             lua_pop(L, has_options ? 2 : 1); // Pop segments and maybe options
-             // Maybe draw default bar here instead of just returning?
-             editorDrawDefaultStatusBar(ab);
-             return;
+        SegmentData *line_segments = NULL; // Initialize to NULL
+        if (segment_count > 0) { // Avoid malloc(0) if Lua returns empty table
+             line_segments = malloc(sizeof(SegmentData) * segment_count);
+             if (!line_segments) {
+                 showDebugOnError("Failed to draw status bar: Status bar segment memory allocation failed");
+                 // Clean up Lua stack before returning
+                 lua_pop(L, has_options ? 2 : 1);
+                 editorDrawDefaultStatusBar(ab); // Attempt fallback drawing
+                 return; // Exit the function
+             }
         }
 
         int line_segment_idx = 0; // Index within line_segments for the current line
         int total_left_width = 0;
         int total_right_width = 0;
-        // Center alignment is harder with direct rendering, skipping for now.
 
-        // Iterate through all segments returned by Lua
+        // Iterate through all segments returned by Lua to collect data for the current line
         for (int i = 1; i <= segment_count; i++) {
-            lua_rawgeti(L, segments_idx, i); // Get the i-th segment table
-            if (!lua_istable(L, -1)) {
-                lua_pop(L, 1); // Pop non-table item
-                continue; // Skip this segment
-            }
+            lua_rawgeti(L, segments_idx, i);
+            if (!lua_istable(L, -1)) { lua_pop(L, 1); continue; } // Skip non-tables
 
-            // Check which line this segment belongs to (default to line 0 if not specified)
-            int segment_line_num = 0; // Default to the first line (index 0)
+            // Check segment line number
+            int segment_line_num = 0; // Default to line index 0 (first line)
             lua_getfield(L, -1, "line");
-            if (lua_isnumber(L, -1)) {
-                segment_line_num = lua_tointeger(L, -1) - 1; // Lua uses 1-based index
-            }
-            lua_pop(L, 1); // Pop line number or nil
+            if (lua_isnumber(L, -1)) segment_line_num = lua_tointeger(L, -1) - 1; // Lua is 1-based
+            lua_pop(L, 1);
 
-            // If this segment isn't for the current line being drawn, skip it
-            if (segment_line_num != line_idx) {
-                lua_pop(L, 1); // Pop the segment table
-                continue;
-            }
+            // Only collect segments for the current line being drawn
+            if (segment_line_num != line_idx) { lua_pop(L, 1); continue; }
 
-            // Get segment text (required)
+            // Get mandatory segment text
             const char *text = NULL;
             lua_getfield(L, -1, "text");
-            if (lua_isstring(L, -1)) {
-                text = lua_tostring(L, -1); // Get pointer to Lua's string data
-            }
-            lua_pop(L, 1); // Pop text or nil
-
-            if (!text) { // Text is mandatory for a segment
-                lua_pop(L, 1); // Pop the segment table
-                continue; // Skip segment without text
-            }
+            if (lua_isstring(L, -1)) text = lua_tostring(L, -1);
+            lua_pop(L, 1);
+            if (!text) { lua_pop(L, 1); continue; } // Skip segments without text
 
             // Get optional fg/bg colors
             const char *fg_name = NULL, *bg_name = NULL;
             lua_getfield(L, -1, "fg"); if (lua_isstring(L, -1)) fg_name = lua_tostring(L, -1); lua_pop(L, 1);
             lua_getfield(L, -1, "bg"); if (lua_isstring(L, -1)) bg_name = lua_tostring(L, -1); lua_pop(L, 1);
 
-            // Resolve colors (use segment specific, fallback to line default, fallback to theme default)
+            // Resolve colors
             char* fg_color = status_fg; // Start with line default
-            if (fg_name) {
-                char* t = getThemeColorByName(fg_name);
-                if(t) fg_color = t; else if(fg_name[0] == '#') fg_color = (char*)fg_name;
-            }
+            if (fg_name) { char* t = getThemeColorByName(fg_name); if(t) fg_color = t; else if(fg_name[0] == '#') fg_color = (char*)fg_name; }
             char* bg_color = status_bg; // Start with line default
-            if (bg_name) {
-                char* t = getThemeColorByName(bg_name);
-                if(t) bg_color = t; else if(bg_name[0] == '#') bg_color = (char*)bg_name;
-            }
+            if (bg_name) { char* t = getThemeColorByName(bg_name); if(t) bg_color = t; else if(bg_name[0] == '#') bg_color = (char*)bg_name; }
 
-            // Get optional alignment (default left)
-            int alignment = 0; // 0 = left
+            // Get optional alignment
+            int alignment = 0; // Default left
             lua_getfield(L, -1, "align");
-            if (lua_isstring(L, -1)) {
-                const char *a = lua_tostring(L, -1);
-                if (strcmp(a, "right") == 0) alignment = 2;
-                // else if (strcmp(a, "center") == 0) alignment = 1; // Center not handled yet
-            }
-            lua_pop(L, 1); // Pop align or nil
+            if (lua_isstring(L, -1)) { if (strcmp(lua_tostring(L, -1), "right") == 0) alignment = 2; }
+            lua_pop(L, 1);
 
-            // Calculate visual width using the ANSI-aware, wcwidth-based function
+            // Calculate visual width (ensure calculate_visible_length_ansi exists and works correctly)
+            // ASSUMPTION: calculate_visible_length_ansi handles NULL input gracefully (returns 0).
             int visual_width = calculate_visible_length_ansi(text);
 
-            // Store segment data for rendering pass
-            // Ensure we don't write past the allocated buffer (shouldn't happen if malloc succeeded)
-             if (line_segment_idx < segment_count) {
-                line_segments[line_segment_idx].text = text; // Store pointer to Lua string
-                line_segments[line_segment_idx].fg = fg_color;
-                line_segments[line_segment_idx].bg = bg_color;
-                line_segments[line_segment_idx].width = visual_width;
-                line_segments[line_segment_idx].alignment = alignment;
+            // Store segment data for rendering pass (check index bounds)
+            // line_segment_idx should be < segment_count if malloc succeeded and loop runs
+            line_segments[line_segment_idx].text = text;
+            line_segments[line_segment_idx].fg = fg_color;
+            line_segments[line_segment_idx].bg = bg_color;
+            line_segments[line_segment_idx].width = visual_width;
+            line_segments[line_segment_idx].alignment = alignment;
 
-                // Accumulate widths for padding calculation
-                if (alignment == 0) total_left_width += visual_width;
-                else if (alignment == 2) total_right_width += visual_width;
+            // Accumulate widths based on alignment
+            if (alignment == 0) total_left_width += visual_width;
+            else if (alignment == 2) total_right_width += visual_width;
 
-                line_segment_idx++;
-             } // else: Should ideally report an error or increase buffer if possible
+            line_segment_idx++;
 
+            lua_pop(L, 1); // Pop the segment table
+        } // --- End segment data collection loop ---
 
-            lua_pop(L, 1); // Pop the segment table for this iteration
-        } // --- End segment collection loop for this line ---
-
-
-        // --- Render the status line directly to abuf ---
+        // --- Render the status line using collected data ---
         applyTrueColor(ab, status_fg, status_bg); // Set default background/foreground for the line
-        abAppend(ab, "\x1b[K", 3);                 // Clear line with these default colors
+        abAppend(ab, "\x1b[K", 3);               // Clear line with these default colors
 
-        int current_visual_col = 0; // Track visual column position on screen
+        int left_render_end_col = 0; // Track visual column position *after* rendering left segments (0-based)
 
-        // Render Left-Aligned Segments directly
-        for (int i = 0; i < line_segment_idx; i++) {
-            if (line_segments[i].alignment == 0) { // Left aligned
-                 // Check if adding this segment would exceed screen width
-                 if (current_visual_col + line_segments[i].width <= E.screencols) {
-                    applyTrueColor(ab, line_segments[i].fg, line_segments[i].bg);
-                    // IMPORTANT: Appending the raw text from Lua string pointer
-                    abAppend(ab, line_segments[i].text, strlen(line_segments[i].text));
-                    current_visual_col += line_segments[i].width; // Advance by calculated visual width
-                 } else {
-                     // Not enough space for the whole segment.
-                     // Option 1: Skip it entirely (simplest)
-                     // Option 2: Truncate it (more complex, requires careful handling of ANSI/UTF-8 within the segment)
-                     // Let's skip for now.
-                     break; // Stop rendering left segments if one doesn't fit
+        // Render Left-Aligned Segments
+        if (line_segments) { // Check if segments were allocated
+             for (int i = 0; i < line_segment_idx; i++) {
+                 if (line_segments[i].alignment == 0) { // Left aligned
+                     if (left_render_end_col + line_segments[i].width <= E.screencols) {
+                         applyTrueColor(ab, line_segments[i].fg, line_segments[i].bg);
+                         abAppend(ab, line_segments[i].text, strlen(line_segments[i].text));
+                         left_render_end_col += line_segments[i].width;
+                     } else { break; } // Stop if segment doesn't fit
                  }
-            }
+             }
         }
 
-        // Render Padding (fills space between left and right segments)
-        applyTrueColor(ab, status_fg, status_bg); // Reset to default line colors for padding
-        int padding = E.screencols - total_left_width - total_right_width;
-        if (padding < 0) padding = 0; // No padding if segments already exceed width
+        // Render Right-Aligned Segments using absolute positioning
+        if (line_segments && total_right_width > 0 && E.screencols > 0) {
+            // Calculate target start column (1-based for \x1b[...G)
+            int right_start_col = E.screencols - total_right_width + 1;
 
-         // Ensure padding doesn't push content off-screen if left segments were near the edge
-         if (current_visual_col + padding > E.screencols) {
-             padding = E.screencols - current_visual_col;
-             if (padding < 0) padding = 0;
-         }
+            // Prevent overlap: only draw if right would start AFTER where left ended
+            if (right_start_col > left_render_end_col) {
 
-        for (int i = 0; i < padding; i++) {
-            abAppend(ab, " ", 1);
-        }
-        current_visual_col += padding; // Account for padding width
+                // Move cursor to the calculated starting position
+                char pos_buf[32];
+                snprintf(pos_buf, sizeof(pos_buf), "\x1b[%dG", right_start_col);
+                abAppend(ab, pos_buf, strlen(pos_buf));
 
+                int current_right_col = right_start_col; // Track columns for right segments (1-based)
 
-        // Render Right-Aligned Segments directly (in the order they appear in the Lua table)
-        // Note: This renders them starting immediately after the padding.
-        // A true right-alignment might require calculating positions beforehand.
-        for (int i = 0; i < line_segment_idx; i++) {
-            if (line_segments[i].alignment == 2) { // Right aligned
-                 // Check if there's *any* space left before attempting to draw
-                 // More precise check: current_visual_col + line_segments[i].width <= E.screencols
-                 if (current_visual_col < E.screencols) {
-                      if (current_visual_col + line_segments[i].width <= E.screencols) {
-                          applyTrueColor(ab, line_segments[i].fg, line_segments[i].bg);
-                          abAppend(ab, line_segments[i].text, strlen(line_segments[i].text));
-                          current_visual_col += line_segments[i].width;
-                      } else {
-                          // Not enough space for the whole segment. Skip or truncate?
-                          // Let's skip to avoid partial drawing issues.
-                          // If truncation is needed, it's complex due to ANSI/UTF-8.
-                          continue; // Skip this right-aligned segment
-                      }
-                 } else {
-                     // No space left at all, stop trying to render right segments
-                     break;
-                 }
-            }
+                for (int i = 0; i < line_segment_idx; i++) {
+                    if (line_segments[i].alignment == 2) { // Right aligned
+                        // Check if segment fits: end column <= screen width
+                        if (current_right_col + line_segments[i].width - 1 <= E.screencols) {
+                            applyTrueColor(ab, line_segments[i].fg, line_segments[i].bg);
+                            abAppend(ab, line_segments[i].text, strlen(line_segments[i].text));
+                            current_right_col += line_segments[i].width;
+                        } else { break; } // Stop if segment doesn't fit
+                    }
+                }
+            } // else: Right segments would overlap or touch left segments, skipped.
         }
 
-        // Reset colors at the very end of the line drawing
-        applyThemeDefaultColor(ab);
+        // Reset colors at the very end of the line drawing (maybe redundant if applyThemeDefaultColor does it)
+        // applyTrueColor(ab, status_fg, status_bg); // Or just reset fully:
+        applyThemeDefaultColor(ab); // Should reset SGR attributes
 
-        // Free collected segment data for this line
-        free(line_segments); // Free memory allocated for this line's segments
-
-        // Add newline separator BETWEEN lines for multi-line status bars
-        // But NOT after the very last line.
-        if (line_idx < statusbar_height - 1) {
-            abAppend(ab, "\r\n", 2);
-        }
+        // Free collected segment data for this line (if allocated)
+        free(line_segments); // free(NULL) is safe.
 
     } // --- End loop through status bar lines ---
 
-    // Pop Lua return values (segments table and potentially options table)
+    // Add required newline after the status bar content (before message bar)
+    abAppend(ab, "\r\n", 2);
+
+    // Pop Lua return values from the stack
     lua_pop(L, has_options ? 2 : 1);
+
+    // applyThemeDefaultColor(ab); // Usually done AFTER the message bar in editorRefreshScreen
 }
 
 
-// (editorDrawMessageBar remains mostly the same, ensures color reset)
+
 void editorDrawMessageBar(struct abuf *ab) {
     // Set message bar colors (or use defaults)
     char *msg_fg = E.theme.ui_message_fg ? E.theme.ui_message_fg : E.theme.ui_status_fg; // Fallback to status fg
@@ -858,8 +811,168 @@ void editorDrawMessageBar(struct abuf *ab) {
     applyThemeDefaultColor(ab);
 }
 
+void editorDrawDebugOverlay(struct abuf *ab) {
+    // --- Full Screen Setup ---
+    int overlay_width = E.screencols;
+    int overlay_height = E.screenrows;
+    int overlay_start_row = 0; // Screen coordinates are 1-based, index is 0
+    int overlay_start_col = 0; // Screen coordinates are 1-based, index is 0
 
-// (editorRefreshScreen remains the same, calls the updated draw functions)
+    // Basic check: Don't draw if screen isn't usable
+    if (overlay_height < 1 || overlay_width < 1) return;
+
+    // --- Color Setup ---
+    // Use background_bg for overlay background. Allow fallback.
+    char *overlay_bg = E.theme.ui_background_bg ? E.theme.ui_background_bg : "#000044";
+    // Use ui_message_fg for default content text. Allow fallback. (CORRECTED)
+    char *overlay_fg = E.theme.ui_message_fg ? E.theme.ui_message_fg : "#ffffff";
+    // Use status_mode colors for the title bar. Allow fallbacks.
+    char *overlay_title_bg = E.theme.ui_status_mode_bg ? E.theme.ui_status_mode_bg : "#ff0000";
+    char *overlay_title_fg = E.theme.ui_status_mode_fg ? E.theme.ui_status_mode_fg : "#ffffff";
+
+
+    // --- Prepare Raw Log Buffer Content ---
+    // Make a temporary copy to safely parse lines by inserting null terminators
+    char raw_buffer_copy[DEBUG_BUFFER_SIZE];
+    strncpy(raw_buffer_copy, debug_buffer, DEBUG_BUFFER_SIZE - 1);
+    raw_buffer_copy[DEBUG_BUFFER_SIZE - 1] = '\0';
+
+    // Calculate how many lines we might need from the raw buffer
+    int title_lines = 1;
+    int border_lines = 1; // Assuming a bottom border/blank line for padding
+    int content_height = overlay_height - title_lines - border_lines;
+    if (content_height < 0) content_height = 0;
+
+    int max_raw_lines_needed = content_height - displayed_error_count;
+    if (max_raw_lines_needed < 0) max_raw_lines_needed = 0;
+
+    // Array to hold pointers to the start of relevant lines in raw_buffer_copy
+    char *raw_lines[MAX_OVERLAY_RAW_LINES];
+    int raw_line_count = 0;
+    // Limit the lines we actually try to fetch to avoid excessive processing/memory
+    int lines_to_fetch = (max_raw_lines_needed > MAX_OVERLAY_RAW_LINES) ? MAX_OVERLAY_RAW_LINES : max_raw_lines_needed;
+
+    // Find line starts by working backwards through the buffer copy
+    if (lines_to_fetch > 0) {
+         char *end = raw_buffer_copy + strlen(raw_buffer_copy);
+         char *ptr = end;
+         while (ptr > raw_buffer_copy && raw_line_count < lines_to_fetch) {
+             ptr--;
+             if (*ptr == '\n' || ptr == raw_buffer_copy) {
+                 char *line_start = (ptr == raw_buffer_copy) ? ptr : ptr + 1;
+                 // Only add non-empty lines
+                 if (*line_start != '\0' && *line_start != '\n') {
+                     if (raw_line_count < MAX_OVERLAY_RAW_LINES) { // Check array bounds
+                          raw_lines[raw_line_count++] = line_start;
+                     } else {
+                          break; // Stop if fixed array is full
+                     }
+                 }
+                 // Null-terminate the *previous* line in the copy for safe strlen/drawing later
+                 if (ptr > raw_buffer_copy && *ptr == '\n') *ptr = '\0';
+             }
+         }
+         // Catch the very first line if buffer doesn't start with newline and wasn't empty
+         if (ptr == raw_buffer_copy && raw_line_count < lines_to_fetch && *ptr != '\0' && *ptr != '\n') {
+             if (raw_line_count < MAX_OVERLAY_RAW_LINES) { // Check bounds again
+                  raw_lines[raw_line_count++] = ptr;
+             }
+         }
+    }
+    // --- End Raw Log Buffer Prep ---
+
+
+    // --- Draw the Full Overlay ---
+    int raw_line_render_idx = raw_line_count - 1; // Index to render raw lines (most recent first)
+
+    for (int i = 0; i < overlay_height; i++) {
+        // Move cursor to the start of the current overlay line
+        char pos_buf[32];
+        // ANSI escape codes use 1-based row/column numbers
+        snprintf(pos_buf, sizeof(pos_buf), "\x1b[%d;%dH",
+                 overlay_start_row + i + 1, overlay_start_col + 1);
+        abAppend(ab, pos_buf, strlen(pos_buf));
+
+        // Set colors for the current line type and clear the line
+        if (i == 0) { // Title bar line
+            applyTrueColor(ab, overlay_title_fg, overlay_title_bg);
+        } else { // Content or bottom border line
+            applyTrueColor(ab, overlay_fg, overlay_bg); // Use corrected default fg
+        }
+        abAppend(ab, "\x1b[K", 3); // Clear line from cursor to end with current colors
+
+        // Draw the specific content for this line
+        if (i == 0) {
+            // --- Draw Title Bar ---
+            // Centered title text
+            char title_text[128]; // Buffer for the title string
+            snprintf(title_text, sizeof(title_text), " DEBUG LOG - Press Ctrl-D to dismiss ");
+            int title_len = strlen(title_text);
+            int padding = (overlay_width - title_len) / 2;
+            if (padding < 0) padding = 0;
+
+            // Move cursor to start of centered text using ANSI code \x1b[<N>C (Cursor Forward)
+            if (padding > 0) {
+                char pad_buf[16];
+                snprintf(pad_buf, sizeof(pad_buf), "\x1b[%dC", padding);
+                abAppend(ab, pad_buf, strlen(pad_buf));
+            }
+            // Append the title text (only draw what fits)
+            int draw_len = (title_len > overlay_width - padding) ? (overlay_width - padding) : title_len;
+             if (draw_len > 0) {
+                  abAppend(ab, title_text, draw_len);
+             }
+            // Remainder of line is cleared by \x1b[K
+
+        } else if (i == overlay_height - 1) {
+            // --- Draw Bottom Border (optional) ---
+            // Line is already cleared with the default overlay background/foreground
+            // You could add specific characters like '─' here if desired
+            ; // Currently draws a blank line with the overlay background
+
+        } else {
+            // --- Draw Content Lines ---
+            int content_line_idx = i - 1; // 0-based index for the content area
+            char *line_to_draw = NULL;
+
+            // Priority 1: Draw unique errors from displayed_errors buffer
+            if (content_line_idx < displayed_error_count) {
+                line_to_draw = displayed_errors[content_line_idx];
+            }
+            // Priority 2: Fill remaining space with recent lines from raw debug_buffer
+            else if (raw_line_render_idx >= 0) {
+                 // Make sure the pointer is still valid (within the copy buffer)
+                 if(raw_lines[raw_line_render_idx] >= raw_buffer_copy && raw_lines[raw_line_render_idx] < raw_buffer_copy + DEBUG_BUFFER_SIZE) {
+                     line_to_draw = raw_lines[raw_line_render_idx];
+                 }
+                 raw_line_render_idx--; // Move to the next older raw line for the next loop iteration
+            }
+
+            // Render the selected line (truncate if needed)
+            if (line_to_draw) {
+                int line_len = strlen(line_to_draw);
+                int len_to_draw = (line_len < overlay_width) ? line_len : overlay_width;
+
+                for (int j = 0; j < len_to_draw; j++) {
+                    char ch = line_to_draw[j];
+                    // Replace control characters (like newline embedded mid-string) with '?'
+                    if (iscntrl((unsigned char)ch)) {
+                        abAppend(ab, "?", 1);
+                    } else {
+                        abAppend(ab, &ch, 1);
+                    }
+                }
+                // Rest of the line is cleared by \x1b[K
+            }
+            // If no line_to_draw, the line remains blank (cleared by \x1b[K)
+        }
+    }
+
+    // Reset colors back to default after drawing the entire overlay
+    applyThemeDefaultColor(ab);
+}
+
+
 void editorRefreshScreen() {
     editorScroll(); // Update scroll offsets based on cursor position
 
@@ -874,6 +987,11 @@ void editorRefreshScreen() {
     editorDrawStatusBar(&ab);     // Draw the status bar (Lua or default C)
     editorDrawMessageBar(&ab);    // Draw the message bar
 
+    // Draw debug overlay if active (with additional debug logging)
+    if (debug_overlay_active) {
+        editorDrawDebugOverlay(&ab);
+    }
+
     // Position cursor at its logical position in the editor window
     char buf[32];
     // Calculate screen row/col based on file row/col and offsets
@@ -886,10 +1004,8 @@ void editorRefreshScreen() {
     abAppend(&ab, "\x1b[?25h", 6); // Show cursor
 
     // Write the entire buffer to standard output
-    // Error handling for write is important in a real application
     if (write(STDOUT_FILENO, ab.b, ab.len) == -1) {
          perror("editorRefreshScreen: write error");
-         // Handle error appropriately, maybe attempt recovery or exit
     }
 
     abFree(&ab); // Free the append buffer memory
@@ -907,6 +1023,5 @@ void editorSetStatusMessage(const char *fmt, ...) {
 // (editorClearStatusMessage remains the same, or provide a default message)
 void editorClearStatusMessage() {
     // Set a default message or clear it
-    // editorSetStatusMessage("HELP: Ctrl-S = save | Ctrl-Q = quit | Ctrl-F = find");
-     E.statusmsg[0] = '\0'; // Or simply clear the message
+    editorSetStatusMessage("HELP: Ctrl-S = save | Ctrl-Q = quit | Ctrl-F = find");
 }

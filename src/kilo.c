@@ -26,6 +26,9 @@ void initEditor() {
   E.statusmsg[0] = '\0';
   E.statusmsg_time = 0;
   E.mode = MODE_NORMAL;
+  E.buffer_list_head = NULL;
+    E.current_buffer = NULL;
+    E.num_buffers = 0;
   setlocale(LC_CTYPE, "");
 
   memset(&E.theme, 0, sizeof(E.theme));
@@ -47,27 +50,45 @@ void initEditor() {
  * Enables raw mode, initializes editor state, opens file if provided,
  * and enters the main loop to process keypresses and refresh the screen.
  */
+
 int main(int argc, char *argv[]) {
-    enableRawMode(); // Switch terminal to raw mode
-    atexit(freeSyntaxDefs); // Register cleanup function
+    initDebug(); // Initialize debug system first
+
+    // --- Optional: Check for a debug flag to start with overlay active ---
+    // Example: if (argc > 1 && strcmp(argv[1], "--debug-visible") == 0) {
+    //     debug_overlay_active = 1;
+    //     user_dismissed_overlay = 0; // Ensure not dismissed
+    //     // Shift argc/argv if you consume the argument
+    // }
+
+    enableRawMode();
+    atexit(freeSyntaxDefs);
     atexit(freeThemeColors);
-    
-    initEditor(); // Initialize editor state
 
-    // If a filename was provided as a command-line argument, open it
-    if (argc >= 2) {
-        editorOpen(argv[1]);
+    initEditor();
+
+    // Open file if provided (unchanged)
+    if (argc >= 2 /* Adjust if you consumed an arg */) {
+        editorOpen(argv[1 /* Adjust index */]);
+        // debug_printf("Opened file: %s\n", argv[1 /* Adjust index */]);
     }
-    initLua();    // Initialize Lua state
 
-    editorSetStatusMessage("HELP: Ctrl-S = save | Ctrl-Q = quit | Ctrl-F = find");
+    initLua();
+    debug_printf("Lua initialized\n");
+
+    // Set initial status message (unchanged or adapt if overlay starts visible)
+     if (debug_overlay_active) {
+         editorSetStatusMessage("DEBUG OVERLAY - Press Ctrl-D to dismiss");
+     } else {
+         editorSetStatusMessage("HELP: Ctrl-S = save | Ctrl-Q = quit | Ctrl-F = find | Ctrl-D = Debug Log");
+     }
 
 
-    // Main event loop
+    // Main loop (unchanged)
     while (1) {
-        editorRefreshScreen();   // Redraw the screen
-        editorProcessKeypress(); // Wait for and handle user input
+        editorRefreshScreen();
+        editorProcessKeypress();
     }
 
-    return 0; // Technically unreachable due to infinite loop and exit()
+    return 0; // Unreachable
 }

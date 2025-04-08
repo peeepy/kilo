@@ -8,7 +8,6 @@
 #include <unistd.h>   // For stat, access
 #include <sys/stat.h> // For stat, S_ISDIR
 #include <limits.h>   // For PATH_MAX
-// #include <libgen.h> // For dirname
 
 #include "k_lua.h"
 #include "kilo.h"
@@ -27,6 +26,8 @@ static int c_kilo_get_filetype_icon(lua_State *L);
 static int c_kilo_get_total_lines(lua_State *L);
 static int c_kilo_get_filetype_name(lua_State *L);
 static int c_kilo_get_git_branch(lua_State *L);
+static int c_kilo_lua_print(lua_State *L);
+static int c_kilo_get_tabs(lua_State *L);
 
 // Lua module definition
 static const struct luaL_Reg kilo_lib[] = { // Renamed for clarity
@@ -43,6 +44,8 @@ static const struct luaL_Reg kilo_lib[] = { // Renamed for clarity
     {"get_total_lines", c_kilo_get_total_lines},
     {"get_filetype_name", c_kilo_get_filetype_name},
     {"get_git_branch", c_kilo_get_git_branch},
+    {"print", c_kilo_lua_print},
+    {"get_tabs", c_kilo_get_tabs},
     {NULL, NULL} /* Sentinel */
 };
 
@@ -57,96 +60,234 @@ lua_State* getLuaState(void) {
 int initLua() {
     L = luaL_newstate();
     if (L == NULL) {
-        fprintf(stderr, "[Kilo Error] Could not create Lua state\n");
+        // Cannot use debug_printf here reliably yet
+        fprintf(stderr, "[Kilo C Error] Could not create Lua state\n");
         return -1;
     }
 
     luaL_openlibs(L); // Load standard Lua libraries
 
-    // Register C library module
-    luaL_newlib(L, kilo_lib); // Create table, register functions
+    // --- Replace standard Lua print function ---
+    lua_pushcfunction(L, c_kilo_lua_print);
+    lua_setglobal(L, "print");
+    printf("[Kilo C] Replaced standard Lua 'print' with debug logger.\n");
+    // --- End replacement ---
+
+    // Register C library module ("kilo")
+    luaL_newlib(L, kilo_lib); // Create table, register functions from kilo_lib array
     lua_setglobal(L, "kilo"); // Make the table available globally as "kilo"
+    printf("[Kilo C] 'kilo' module registered.\n");
 
-    printf("[Kilo] Lua initialized and 'kilo' module registered.\n");
-
-    // Set up Neovim-style module paths
+    // --- Set up Neovim-style module paths ---
     lua_getglobal(L, "package");
-    lua_getfield(L, -1, "path");
-    const char *current_path = lua_tostring(L, -1);
-    
+    lua_getfield(L, -1, "path"); // Get current package.path
+    const char *current_path = lua_tostring(L, -1); // Note: Handles NULL if path isn't string
+
     char new_path[4096];
-    // Get the config directory prefix
     const char *config_home = getenv("XDG_CONFIG_HOME");
     const char *home = getenv("HOME");
     char config_dir[1024];
-    
-    if (config_home) {
-        snprintf(config_dir, sizeof(config_dir), "%s/kilo", config_home);
-    } else if (home) {
-        snprintf(config_dir, sizeof(config_dir), "%s/.config/kilo", home);
-    } else {
-        // Fallback if HOME isn't set
-        strcpy(config_dir, "./");
-    }
-    
-    // Create the path with all the necessary patterns
-    snprintf(new_path, sizeof(new_path), 
-             "%s;%s/?.lua;%s/?/init.lua;%s/lua/?.lua;%s/lua/?/init.lua", 
-             current_path, config_dir, config_dir, config_dir, config_dir);
-    
-    // Set the new package.path
-    lua_pushstring(L, new_path);
-    lua_setfield(L, -3, "path");
-    
-    // Clean up the stack
-    lua_pop(L, 2); // Pop package and path
-    
-    printf("[Kilo] Lua initialized with enhanced module paths\n");
-    // *** END OF ADDED CODE ***
+    int config_dir_set = 0; // Flag to track if we found a valid config dir
 
-    printf("[Kilo] Lua initialized and 'kilo' module registered.\n");
+    // Determine config directory path
+    if (config_home && config_home[0] != '\0') {
+        snprintf(config_dir, sizeof(config_dir), "%s/kilo", config_home);
+        config_dir_set = 1;
+    } else if (home && home[0] != '\0') {
+        snprintf(config_dir, sizeof(config_dir), "%s/.config/kilo", home);
+        config_dir_set = 1;
+    } else {
+        fprintf(stderr, "[Kilo C Warning] Could not determine config directory (XDG_CONFIG_HOME or HOME not set/empty).\n");
+        // Do not attempt to load Lua config if directory is unknown
+    }
+
+    if(config_dir_set) {
+        // Create the enhanced path string only if config_dir is valid
+        if (current_path == NULL) current_path = ""; // Default to empty string if package.path was nil
+        snprintf(new_path, sizeof(new_path),
+                "%s;%s/?.lua;%s/?/init.lua;%s/lua/?.lua;%s/lua/?/init.lua",
+                current_path, config_dir, config_dir, config_dir, config_dir);
+
+        // Set the new package.path
+        lua_pushstring(L, new_path);
+        lua_setfield(L, -3, "path"); // Set field 'path' in table at index -3 (package table)
+        printf("[Kilo C] Lua package.path configured: %s\n", new_path);
+    } else {
+         printf("[Kilo C] Lua package.path not modified (no config directory found).\n");
+    }
+
+    lua_pop(L, 2); // Pop package table and old path string (or nil)
+    // --- End path setup ---
+
 
     // --- Attempt to load and run user's init script ---
-    char config_path[1024];
-    if (config_home) {
-        snprintf(config_path, sizeof(config_path), "%s/kilo/init.lua", config_home);
-    } else {
-        // Default to ~/.config/kilo/init.lua
-        if (!home) {
-             fprintf(stderr, "[Kilo/Lua Error] Cannot find HOME directory for config.\n");
-             goto skip_lua_load;
-        }
-        snprintf(config_path, sizeof(config_path), "%s/.config/kilo/init.lua", home);
+    if (!config_dir_set) {
+        printf("[Kilo C] Skipping Lua init script load (config directory unknown).\n");
+        goto skip_lua_load; // Skip if we couldn't determine where to load from
     }
 
-    printf("[Kilo] Attempting to load Lua init script: %s\n", config_path);
-    fflush(stdout);
+    char config_path[1024];
+    snprintf(config_path, sizeof(config_path), "%s/init.lua", config_dir);
 
-    int result = luaL_dofile(L, config_path); // Execute the init script
+    printf("[Kilo C] Attempting to load Lua init script: %s\n", config_path);
+    fflush(stdout); // Ensure this message prints before potential errors
+
+    int result = luaL_dofile(L, config_path); // Load and execute the init script
 
     if (result != LUA_OK) {
-        // Print error if loading/running fails
-        const char *errorMsg = lua_tostring(L, -1);
-        fprintf(stderr, "[Kilo/Lua Error] Failed to run init script (%s): %s\n", config_path, errorMsg);
-        lua_pop(L, 1); // Remove error message from stack
-        // Decide if this error is fatal or not. Maybe continue running Kilo?
+        // Error occurred during loading or execution of init.lua
+        const char *errorMsg = lua_tostring(L, -1); // Get error from Lua stack top
+        if (errorMsg == NULL) {
+             errorMsg = "Unknown Lua Error (error object not a string?)";
+        }
+        // Log error to both stderr (for immediate visibility) and debug overlay
+        fprintf(stderr, "[Kilo C Error] Failed to run init script '%s': %s\n", config_path, errorMsg);
+        debug_printf("[LUA ERROR] Failed init ('%s'): %s\n", config_path, errorMsg);
+
+        lua_pop(L, 1); // Remove error object from Lua stack
+        // Decide how to proceed - maybe disable Lua features? For now, continue.
     } else {
-        printf("[Kilo] Lua init script executed successfully.\n");
+        // init.lua executed successfully
+        printf("[Kilo C] Lua init script executed successfully.\n");
         fflush(stdout);
+        debug_printf("[LUA] init.lua executed successfully.\n"); // Log success to overlay
     }
 
-skip_lua_load: // Label for goto if HOME wasn't found
+skip_lua_load: // Label used if config dir determination failed
 
-    // If initLua is the ONLY
-    // interaction point, we might need to close it here, but usually
-    // you keep it alive. For now, let's assume you might add more later
-    // and don't call lua_close(L) here. Remember to call it on exit.
+    // Keep Lua state L alive for later use (e.g., statusbar callback)
+    // lua_close(L) should happen on editor exit
 
-    return 0; // Success
+    return 0; // Indicate Lua initialization sequence finished (even if script failed)
 }
 
 
 // Lua functions
+/**
+ * @brief Lua binding to get a list of open tabs/buffers.
+ * Iterates through the editor's internal buffer list (assuming a linked list
+ * via E.buffer_list_head and E.current_buffer) and returns a Lua list table.
+ * Each element in the Lua list is a table representing a tab, containing:
+ * - filename (string): Base name of the file.
+ * - is_active (boolean): True if this is the current buffer.
+ * - is_mod (boolean): True if the buffer is modified (dirty).
+ * @param L Lua state.
+ * @return int Number of return values (1: the list table, or nil).
+ */
+static int c_kilo_get_tabs(lua_State *L) {
+    // Check if the necessary buffer management fields exist in E
+    if (!E.buffer_list_head || !E.current_buffer) {
+        // Return nil or an empty table if multi-buffer isn't initialized
+        // lua_pushnil(L);
+        lua_newtable(L); // Return empty table might be friendlier for Lua loops
+        return 1;
+    }
+
+    // 1. Create the main Lua table that will act as a list
+    lua_newtable(L);
+    int list_table_idx = lua_gettop(L); // Get stack index of this list table
+    int list_lua_idx = 0;               // 1-based index for the Lua list
+
+    // 2. Iterate through the linked list of editor buffers
+    editorBuffer *buffer_node = E.buffer_list_head;
+    while (buffer_node != NULL) {
+        // 3. Create a new Lua table for this specific tab/buffer
+        lua_newtable(L);
+        int tab_table_idx = lua_gettop(L); // Stack index of the tab table
+
+        // 4a. Set 'filename' field
+        // Use the findBasename helper to get just the file part
+        const char *display_name = findBasename(buffer_node->filename);
+        if (display_name) {
+            lua_pushstring(L, display_name);
+        } else {
+            lua_pushstring(L, "[No Name]"); // Fallback if filename is NULL
+        }
+        // lua_setfield(table_idx, key_name) - sets field in table at specified index
+        lua_setfield(L, tab_table_idx, "filename");
+
+        // 4b. Set 'is_active' field
+        lua_pushboolean(L, (buffer_node == E.current_buffer)); // Compare pointers
+        lua_setfield(L, tab_table_idx, "is_active");
+
+        // 4c. Set 'is_mod' field (assuming 'dirty' field in editorBuffer)
+        lua_pushboolean(L, buffer_node->dirty);
+        lua_setfield(L, tab_table_idx, "is_mod");
+
+        // --- OPTIONAL: Add more fields if needed ---
+        // lua_pushstring(L, buffer_node->filename ? buffer_node->filename : "");
+        // lua_setfield(L, tab_table_idx, "full_path");
+        // if (buffer_node->syntax && buffer_node->syntax->filetype) {
+        //     lua_pushstring(L, buffer_node->syntax->filetype);
+        // } else {
+        //     lua_pushnil(L);
+        // }
+        // lua_setfield(L, tab_table_idx, "filetype");
+        // -------------------------------------------
+
+        // 5. Add the completed tab table to the main list table
+        // lua_rawseti(list_table_idx, list_lua_idx, value) - sets list[idx] = value (pops value)
+        lua_rawseti(L, list_table_idx, ++list_lua_idx);
+
+        // Move to the next buffer in the linked list
+        buffer_node = buffer_node->next;
+    }
+
+    // The main list table (at list_table_idx) is now at the top of the stack
+    return 1; // Return 1 value (the list table)
+}
+
+
+
+static int c_kilo_lua_print(lua_State *L) {
+    int n = lua_gettop(L); // Number of arguments passed to print()
+    luaL_Buffer b;
+
+    lua_getglobal(L, "tostring"); // Get Lua's built-in tostring function
+
+    luaL_buffinit(L, &b); // Initialize buffer
+
+    for (int i = 1; i <= n; i++) {
+        lua_pushvalue(L, -1); // Duplicate tostring function
+        lua_pushvalue(L, i);  // Push argument i
+        lua_call(L, 1, 1);    // Call tostring(arg[i])
+
+        // Check if tostring returned a string
+        if (!lua_isstring(L, -1)) {
+            // Handle error: tostring didn't return a string (shouldn't normally happen)
+            // Report error via debug_printf maybe? Or push an error string?
+            // For simplicity, we'll pop the non-string result and add placeholder
+            lua_pop(L, 1); // Pop non-string result
+            luaL_addstring(&b, "[?]");// Add placeholder for non-stringifiable value
+
+        } else {
+             // Add the resulting string to the buffer
+             // luaL_addvalue pops the value from the stack after adding it
+             luaL_addvalue(&b);
+        }
+
+
+        if (i < n) {
+            luaL_addstring(&b, "\t"); // Add tab separator between arguments
+        }
+    }
+
+    lua_pop(L, 1); // Pop the tostring function we initially pushed
+
+    luaL_addstring(&b, "\n"); // Add newline at the end
+    luaL_pushresult(&b);     // Push the final formatted string onto the stack
+    const char *result_string = lua_tostring(L, -1); // Get C string pointer
+
+    if (result_string) {
+        // Send the result to Kilo's debug system
+        debug_printf("[LUA] %s", result_string);
+    }
+    // else: Handle potential error getting string?
+
+    lua_pop(L, 1); // Pop the final string
+    return 0;      // Lua's print returns 0 values
+}
+
 
 static int c_lua_log_message(lua_State *L) {
     const char *message = luaL_checkstring(L, 1); // Get 1st argument

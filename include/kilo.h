@@ -13,12 +13,14 @@
 #include <sys/ioctl.h>  // For ioctl, TIOCGWINSZ, struct winsize
 #include <errno.h>      // For errno, EAGAIN
 #include <dirent.h> // For directory handling
-
+#include "debug.h"
 
 /*** defines ***/
 
 // Macro to generate Ctrl+key combinations (masks bits)
 #define CTRL_KEY(k) ((k) & 0x1f)
+
+#define DEBUG_TOGGLE_KEY CTRL_KEY('d')
 
 // Editor version constant
 #define KILO_VERSION "0.0.1"
@@ -122,6 +124,7 @@ enum editorHighlight {
 #define HL_HIGHLIGHT_NUMBERS (1<<0)
 #define HL_HIGHLIGHT_STRINGS (1<<1)
 
+
 /*** data ***/
 struct editorSyntax {
     char *filetype;
@@ -140,6 +143,22 @@ struct editorSyntax {
     // Language icon to be used in status bar (UTF)
     char *status_icon;
 };
+
+
+typedef struct editorBuffer {
+    char *filename;     // Full path to the file
+    // Add other buffer-specific data you need:
+    int dirty;          // Modified status
+    erow *row;       // Rows specific to this buffer
+    int numrows;
+    int cx, cy, rx;  // Cursor position specific to this buffer
+    int rowoff, coloff; // Scroll offset specific to this buffer
+    struct editorSyntax *syntax; // Syntax highlighting specific to this buffer
+
+    struct editorBuffer *next; // Pointer for linked list implementation
+    struct editorBuffer *prev;
+} editorBuffer;
+
 
 // Structure to hold a single row of text in the editor
 typedef struct erow {
@@ -173,6 +192,10 @@ struct editorConfig {
   struct termios orig_termios; // Original terminal settings to restore on exit
   editorTheme theme; // Holds current theme colors as strings
   enum editorMode mode; // Holds current editor mode (INSERT or NORMAL)
+    // --- New fields for multi-buffer support ---
+  editorBuffer *buffer_list_head; // Head of the linked list of all open buffers
+  editorBuffer *current_buffer;  // Pointer to the currently active buffer
+  int num_buffers;              // Count of open buffers
 };
 
 extern struct editorConfig E;
@@ -252,7 +275,10 @@ void editorMoveCursor(int key);
 void editorProcessKeypress();
 
 // --- Init ---
-void initEditor(); // Needed by main() in kilo.c
+void initEditor();
+
+// Debug
+void editorDrawDebugOverlay(struct abuf *ab);
 
 #endif // KILO_H_
 

@@ -90,7 +90,8 @@ char *editorPrompt(char *prompt, void (*callback)(char *, int)) {
 void editorMoveCursor(int key) {
     // Get a pointer to the current row, or NULL if cursor is beyond file content
     erow *row = (E.cy >= E.numrows) ? NULL : &E.row[E.cy];
-
+  
+    
     switch (key) {
         case H_KEY:
         case ARROW_LEFT:
@@ -140,12 +141,30 @@ void editorMoveCursor(int key) {
  * Handles quitting (Ctrl+Q), cursor movement keys, Home, End, PageUp, PageDown.
  */
 void editorProcessKeypress() {
-  static int quit_times = KILO_QUIT_TIMES;
+    static int quit_times = KILO_QUIT_TIMES;
 
-  int c = editorReadKey();
+    int c = editorReadKey();
+    
+if (c == CTRL_KEY('d')) {
+    if (debug_overlay_active) {
+        // Turning OFF
+        debug_overlay_active = 0;
+        user_dismissed_overlay = 1; // Mark that the user explicitly closed it
+        clearDisplayedErrors();      // <<< IMPORTANT: Clear displayed errors on dismiss
+        editorClearStatusMessage();
+    } else {
+        // Turning ON
+        debug_overlay_active = 1;
+        user_dismissed_overlay = 0; // Mark that the user explicitly opened/re-enabled it
+        // Do NOT clear displayed errors here - user wants to see them.
+        editorSetStatusMessage("DEBUG OVERLAY - Press Ctrl-D to dismiss");
+    }
+    return; // Essential
+}
 
   // Global keys that work in both modes
   switch (c) {
+
     case CTRL_KEY('q'):
       if (E.dirty && quit_times > 0) {
         editorSetStatusMessage("WARNING! File has unsaved changes. "
@@ -164,25 +183,25 @@ void editorProcessKeypress() {
       return; // Return early
 
     case CTRL_KEY('f'):
-        editorFind();
-        quit_times = KILO_QUIT_TIMES;
-        return; // Return early
+      editorFind();
+      quit_times = KILO_QUIT_TIMES;
+      return; // Return early
 
     case CTRL_KEY('t'):
       {
-          char *theme_name = editorPrompt("Theme file name: %s", NULL);
-          if (theme_name == NULL) {
-              editorSetStatusMessage("Theme change cancelled");
+        char *theme_name = editorPrompt("Theme file name: %s", NULL);
+        if (theme_name == NULL) {
+          editorSetStatusMessage("Theme change cancelled");
+        } else {
+          if (theme_name[0] != '\0') {
+            loadTheme(theme_name);
+            // Status message might be set by loadTheme or here
+            // editorSetStatusMessage("Theme loaded: %s", theme_name); // Example
           } else {
-              if (theme_name[0] != '\0') {
-                  loadTheme(theme_name);
-                  // Status message might be set by loadTheme or here
-                  // editorSetStatusMessage("Theme loaded: %s", theme_name); // Example
-              } else {
-                  editorSetStatusMessage("No theme name entered");
-              }
-              free(theme_name);
+            editorSetStatusMessage("No theme name entered");
           }
+          free(theme_name);
+        }
       }
       quit_times = KILO_QUIT_TIMES;
       return; // Return early
@@ -207,29 +226,29 @@ void editorProcessKeypress() {
         }
         editorDelChar();
         break;
-       // Add other normal mode commands here later (e.g., Home, End, Page keys if desired in normal)
-       // Maybe map arrow keys here too if you want them in normal mode eventually
+      // Add other normal mode commands here later (e.g., Home, End, Page keys if desired in normal)
+      // Maybe map arrow keys here too if you want them in normal mode eventually
       case HOME_KEY:
-          E.cx = 0;
-          break;
+        E.cx = 0;
+        break;
       case END_KEY:
-          if (E.cy < E.numrows)
-              E.cx = E.row[E.cy].size;
-          break;
+        if (E.cy < E.numrows)
+          E.cx = E.row[E.cy].size;
+        break;
       case PAGE_UP:
       case PAGE_DOWN:
-          {
-              if (c == PAGE_UP) {
-                  E.cy = E.rowoff;
-              } else if (c == PAGE_DOWN) {
-                  E.cy = E.rowoff + E.screenrows - 1;
-                  if (E.cy > E.numrows) E.cy = E.numrows;
-              }
-              int times = E.screenrows;
-              while (times--)
-                  editorMoveCursor(c == PAGE_UP ? ARROW_UP : ARROW_DOWN);
+        {
+          if (c == PAGE_UP) {
+            E.cy = E.rowoff;
+          } else if (c == PAGE_DOWN) {
+            E.cy = E.rowoff + E.screenrows - 1;
+            if (E.cy > E.numrows) E.cy = E.numrows;
           }
-          break;
+          int times = E.screenrows;
+          while (times--)
+            editorMoveCursor(c == PAGE_UP ? ARROW_UP : ARROW_DOWN);
+        }
+        break;
       // Ignore other keys for now
       default:
         break;
@@ -248,7 +267,7 @@ void editorProcessKeypress() {
       case CTRL_KEY('h'):
       case DEL_KEY:
         if (c == DEL_KEY && E.cy < E.numrows && E.cx < E.row[E.cy].size) {
-             editorMoveCursor(ARROW_RIGHT);
+          editorMoveCursor(ARROW_RIGHT);
         }
         editorDelChar();
         break;
@@ -257,20 +276,20 @@ void editorProcessKeypress() {
         break;
       case END_KEY:
         if (E.cy < E.numrows)
-           E.cx = E.row[E.cy].size;
+          E.cx = E.row[E.cy].size;
         break;
       case PAGE_UP:
       case PAGE_DOWN:
         {
-            if (c == PAGE_UP) {
-                E.cy = E.rowoff;
-            } else if (c == PAGE_DOWN) {
-                E.cy = E.rowoff + E.screenrows - 1;
-                if (E.cy > E.numrows) E.cy = E.numrows;
-            }
-            int times = E.screenrows;
-            while (times--)
-                editorMoveCursor(c == PAGE_UP ? ARROW_UP : ARROW_DOWN);
+          if (c == PAGE_UP) {
+            E.cy = E.rowoff;
+          } else if (c == PAGE_DOWN) {
+            E.cy = E.rowoff + E.screenrows - 1;
+            if (E.cy > E.numrows) E.cy = E.numrows;
+          }
+          int times = E.screenrows;
+          while (times--)
+            editorMoveCursor(c == PAGE_UP ? ARROW_UP : ARROW_DOWN);
         }
         break;
       case ARROW_UP:
@@ -280,13 +299,7 @@ void editorProcessKeypress() {
         editorMoveCursor(c);
         break;
 
-      // case '\x1b': // Handle raw escape if NORMAL_KEY wasn't matched or is different
-      //     // Can optionally map this to switch to normal mode too as a fallback
-      //     // E.mode = MODE_NORMAL;
-      //     // editorSetStatusMessage("");
-      //     break; // Or just ignore if NORMAL_KEY handles it
-
-        // Typically redraw screen, often mapped to Esc too
+      // Typically redraw screen, often mapped to Esc too
       case CTRL_KEY('l'):
         editorRefreshScreen();
         break;
