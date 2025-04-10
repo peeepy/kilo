@@ -1,0 +1,380 @@
+#include "kilo.h"
+
+
+void editorInsertChar(int c) {
+  if (!E.current_buffer) return;
+  
+  if (E.cy == E.numrows) {
+    editorInsertRowToBuffer(E.current_buffer, E.numrows, "", 0);
+  }
+
+  editorRowInsertChar(&E.row[E.cy], E.cx, c);
+  E.cx++;
+  E.current_buffer->dirty = E.dirty;
+}
+
+void editorInsertNewline() {
+  if (!E.current_buffer) return;
+  
+  if (E.cx == 0) {
+    editorInsertRowToBuffer(E.current_buffer, E.cy, "", 0);
+  } else {
+    erow *row = &E.row[E.cy];
+    editorInsertRowToBuffer(E.current_buffer, E.cy + 1, &row->chars[E.cx], row->size - E.cx);
+    row = &E.row[E.cy];
+    row->size = E.cx;
+    row->chars[row->size] = '\0';
+    editorUpdateRow(row);
+  }
+  E.cy++;
+  E.cx = 0;
+  E.current_buffer->dirty = E.dirty;
+}
+
+void editorDelChar() {
+  // Check if cursor is past the end of the file buffer
+  if (E.cy == E.numrows) return;
+  // Check if cursor is at the very beginning of the file
+  if (E.cx == 0 && E.cy == 0) return;
+
+  erow *row = &E.row[E.cy]; // Get current row pointer *once*
+
+  if (E.cx > 0) {
+    // Delete character within the current line
+    editorRowDelChar(row, E.cx - 1);
+    E.cx--;
+  } else {
+    // Delete newline: Join current line (row) with previous line (E.row[E.cy - 1])
+    // Target cursor position is end of previous line
+    E.cx = E.row[E.cy - 1].size;
+    // Append content of current row to the previous row
+    editorRowAppendString(&E.row[E.cy - 1], row->chars, row->size);
+    // Delete the now-empty current row
+    editorDelRow(E.cy);
+    // Move cursor up to the previous line
+    E.cy--;
+    // No need to re-assign row pointer here, operation is done.
+  }
+}
+
+char *editorPrompt(char *prompt, void (*callback)(char *, int)) {
+  size_t bufsize = 128;
+  char *buf = malloc(bufsize);
+  size_t buflen = 0;
+  buf[0] = '\0';
+
+  while (1) {
+    editorSetStatusMessage(prompt, buf); // Pass buf here so %s gets filled
+    editorRefreshScreen();
+
+    int c = editorReadKey();
+
+    if (c == DEL_KEY || c == CTRL_KEY('h') || c == BACKSPACE) {
+        if (buflen != 0) buf[--buflen] = '\0';
+    } else if (c == '\x1b') { // Escape key
+        editorSetStatusMessage(""); // Clear status message on cancel
+        if (callback) callback(buf, c); // Notify callback about escape
+        free(buf);
+        return NULL; // Return NULL for cancellation
+    } else if (c == '\r') { // Enter key
+        if (buflen != 0) { // Only return if something was typed
+            editorSetStatusMessage(""); // Clear status message on success
+            if (callback) callback(buf, c); // Notify callback about enter
+            // buf[buflen] = '\0'; // Ensure null termination (already handled below)
+            return buf; // Return the collected input
+        }
+        // If buffer is empty, Enter does nothing (or you could decide to cancel)
+    } else if (!iscntrl(c) && c < 128) { // Regular character input
+        if (buflen == bufsize - 1) { // Check if buffer needs resizing *before* adding
+            bufsize *= 2;
+            buf = realloc(buf, bufsize);
+            if (buf == NULL) die("realloc"); // Handle allocation failure
+        }
+        buf[buflen++] = c; // Append the character
+        buf[buflen] = '\0'; // Null-terminate the buffer
+    }
+
+    if (callback) callback(buf, c); // Update callback on other keypresses if needed
+  }
+}
+
+/*
+ * Moves the cursor based on the provided key code (ARROW_UP, DOWN, LEFT, RIGHT).
+ * Handles moving between lines and prevents moving outside file boundaries.
+ * Adjusts E.cx to stay within the bounds of the new line after vertical movement.
+ */
+void editorMoveCursor(int key) {
+    if (!E.current_buffer) return;
+    
+    // Get a pointer to the current row, or NULL if cursor is beyond file content
+    erow *row = (E.cy >= E.numrows) ? NULL : &E.row[E.cy];
+  
+    switch (key) {
+        case H_KEY:
+        case ARROW_LEFT:
+            if (E.cx != 0) {
+                E.cx--; // Move left within the line
+            } else if (E.cy > 0) {
+                // Move to the end of the previous line if at start of current line
+                E.cy--;
+                E.cx = E.row[E.cy].size;
+            }
+            break;
+        case L_KEY:
+        case ARROW_RIGHT:
+            if (row && E.cx < row->size) {
+                E.cx++; // Move right within the line
+            } else if (row && E.cx == row->size) {
+                 // Move to the start of the next line if at end of current line
+                E.cy++;
+                E.cx = 0;
+            }
+            break;
+        case K_KEY:
+        case ARROW_UP:
+            if (E.cy != 0) {
+                E.cy--; // Move up one row
+            }
+            break;
+        case J_KEY:
+        case ARROW_DOWN:
+            if (E.cy < E.numrows) { // Allow moving cursor one line past the last line
+                E.cy++; // Move down one row
+            }
+            break;
+    }
+
+    // Check if the cursor would move outside the text area
+    if (E.cx < 0) E.cx = 0;
+    if (E.cy < 0) E.cy = 0;
+    
+    // Don't allow moving past end of file
+    if (E.cy >= E.numrows) {
+        E.cy = E.numrows > 0 ? E.numrows - 1 : 0;
+    }
+    
+    // After moving, snap E.cx to the end of the line if it's past it
+    row = (E.cy >= E.numrows) ? NULL : &E.row[E.cy];
+    if (row) {
+        if (E.cx > row->size) {
+            E.cx = row->size;
+        }
+    } else {
+        E.cx = 0;
+    }
+}
+
+
+/*
+ * Reads a keypress using editorReadKey() and processes it.
+ * Handles quitting (Ctrl+Q), cursor movement keys, Home, End, PageUp, PageDown.
+ */
+void editorProcessKeypress() {
+    static int quit_times = KILO_QUIT_TIMES;
+
+    int c = editorReadKey();
+    
+if (c == CTRL_KEY('d')) {
+    if (debug_overlay_active) {
+        // Turning OFF
+        debug_overlay_active = 0;
+        user_dismissed_overlay = 1; // Mark that the user explicitly closed it
+        clearDisplayedErrors();      // <<< IMPORTANT: Clear displayed errors on dismiss
+        editorClearStatusMessage();
+    } else {
+        // Turning ON
+        debug_overlay_active = 1;
+        user_dismissed_overlay = 0; // Mark that the user explicitly opened/re-enabled it
+        // Do NOT clear displayed errors here - user wants to see them.
+        editorSetStatusMessage("DEBUG OVERLAY - Press Ctrl-D to dismiss");
+    }
+    return; // Essential
+}
+
+  // Global keys that work in both modes
+  switch (c) {
+
+    case CTRL_KEY('b'):
+      if (!E.panel_visible) {
+        E.panel_visible = true;
+        editorSetPanelMode(PANEL_MODE_LEFT);
+      } else {
+        E.panel_visible = false;
+        editorSetPanelMode(PANEL_MODE_NONE);
+      }
+      return;
+
+    case CTRL_KEY('g'):
+      if (!E.navigator_active) {
+        E.navigator_active = true;
+        
+      } else {
+        E.navigator_active = false;
+      }
+      return;
+
+    case CTRL_KEY('q'):
+      if (E.dirty && quit_times > 0) {
+        editorSetStatusMessage("WARNING! File has unsaved changes. "
+                               "Press Ctrl-Q %d more times to quit.", quit_times);
+        quit_times--;
+        return; // Return early to avoid resetting quit_times
+      }
+      write(STDOUT_FILENO, "\x1b[2J", 4);
+      write(STDOUT_FILENO, "\x1b[H", 3);
+      exit(0);
+      break; // Technically unreachable but good practice
+
+    case CTRL_KEY('s'):
+      editorSave();
+      quit_times = KILO_QUIT_TIMES; // Reset quit counter on successful save or attempt
+      return; // Return early
+
+    case CTRL_KEY('f'):
+      editorFind();
+      quit_times = KILO_QUIT_TIMES;
+      return; // Return early
+
+    case CTRL_KEY('t'):
+      {
+        char *theme_name = editorPrompt("Theme file name: %s", NULL);
+        if (theme_name == NULL) {
+          editorSetStatusMessage("Theme change cancelled");
+        } else {
+          if (theme_name[0] != '\0') {
+            loadTheme(theme_name);
+            // Status message might be set by loadTheme or here
+            // editorSetStatusMessage("Theme loaded: %s", theme_name); // Example
+          } else {
+            editorSetStatusMessage("No theme name entered");
+          }
+          free(theme_name);
+        }
+      }
+      quit_times = KILO_QUIT_TIMES;
+      return; // Return early
+      
+    // New keys for buffer management
+    case CTRL_KEY('n'): // Next buffer
+      editorFindNextBuffer();
+      return;
+      
+    case CTRL_KEY('p'): // Previous buffer
+      editorFindPrevBuffer();
+      return;
+      
+    case CTRL_KEY('w'): // Close current buffer
+      editorCloseCurrentBuffer();
+      return;
+  }
+
+  // Mode-specific keys
+  if (E.mode == MODE_NORMAL) {
+    switch (c) {
+      case INSERT_KEY:
+        E.mode = MODE_INSERT;
+        break;
+      case H_KEY:
+      case J_KEY:
+      case K_KEY:
+      case L_KEY:
+        editorMoveCursor(c);
+        break;
+      case D_KEY: // Use D_KEY for delete
+        // Ensure cursor is not past the end of the line before moving right
+        if (E.cy < E.numrows && E.cx < E.row[E.cy].size) {
+            editorMoveCursor(ARROW_RIGHT);
+        }
+        editorDelChar();
+        break;
+      // Add other normal mode commands here later (e.g., Home, End, Page keys if desired in normal)
+      // Maybe map arrow keys here too if you want them in normal mode eventually
+      case HOME_KEY:
+        E.cx = 0;
+        break;
+      case END_KEY:
+        if (E.cy < E.numrows)
+          E.cx = E.row[E.cy].size;
+        break;
+      case PAGE_UP:
+      case PAGE_DOWN:
+        {
+          if (c == PAGE_UP) {
+            E.cy = E.rowoff;
+          } else if (c == PAGE_DOWN) {
+            E.cy = E.rowoff + E.screenrows - 1;
+            if (E.cy > E.numrows) E.cy = E.numrows;
+          }
+          int times = E.screenrows;
+          while (times--)
+            editorMoveCursor(c == PAGE_UP ? ARROW_UP : ARROW_DOWN);
+        }
+        break;
+      // Ignore other keys for now
+      default:
+        break;
+    }
+  } else { // MODE_INSERT
+    switch (c) {
+      case NORMAL_KEY: // Use NORMAL_KEY defined in kilo.h (likely mapped to Esc)
+        E.mode = MODE_NORMAL;
+        // Optional: Move cursor left to match Vim behavior exiting insert
+        // if (E.cx > 0) editorMoveCursor(ARROW_LEFT);
+        break;
+      case '\r':
+        editorInsertNewline();
+        break;
+      case BACKSPACE:
+      case CTRL_KEY('h'):
+      case DEL_KEY:
+        if (c == DEL_KEY && E.cy < E.numrows && E.cx < E.row[E.cy].size) {
+          editorMoveCursor(ARROW_RIGHT);
+        }
+        editorDelChar();
+        break;
+      case HOME_KEY:
+        E.cx = 0;
+        break;
+      case END_KEY:
+        if (E.cy < E.numrows)
+          E.cx = E.row[E.cy].size;
+        break;
+      case PAGE_UP:
+      case PAGE_DOWN:
+        {
+          if (c == PAGE_UP) {
+            E.cy = E.rowoff;
+          } else if (c == PAGE_DOWN) {
+            E.cy = E.rowoff + E.screenrows - 1;
+            if (E.cy > E.numrows) E.cy = E.numrows;
+          }
+          int times = E.screenrows;
+          while (times--)
+            editorMoveCursor(c == PAGE_UP ? ARROW_UP : ARROW_DOWN);
+        }
+        break;
+      case ARROW_UP:
+      case ARROW_DOWN:
+      case ARROW_LEFT:
+      case ARROW_RIGHT:
+        editorMoveCursor(c);
+        break;
+
+      // Typically redraw screen, often mapped to Esc too
+      case CTRL_KEY('l'):
+        editorRefreshScreen();
+        break;
+
+      default:
+        // Insert character if it's printable ASCII
+        if (!iscntrl(c) && c < 128) {
+          editorInsertChar(c);
+        }
+        break;
+    }
+  }
+
+  // Reset quit counter if any key other than Ctrl+Q (when dirty) was pressed
+  // This happens unless we returned early inside the Ctrl+Q logic
+  quit_times = KILO_QUIT_TIMES;
+}

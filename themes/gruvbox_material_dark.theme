@@ -1,0 +1,78 @@
+name: Gruvbox Material Dark
+
+# --- Syntax Highlighting (FG = Foreground, BG = Background) ---
+
+# Background - using bg_dim
+HL_NORMAL_BG: 27,27,27  # bg_dim (#1b1b1b)
+
+# Normal text - using fg1
+HL_NORMAL_FG: 221,199,161  # fg1 (#ddc7a1)
+
+# Comments
+HL_COMMENT_FG: 146,131,116  # grey1 (#928374)
+HL_COMMENT_BG: 27,27,27  # bg_dim (#1b1b1b)
+HL_MLCOMMENT_FG: 146,131,116  # grey1 (#928374)
+HL_MLCOMMENT_BG: 27,27,27  # bg_dim (#1b1b1b)
+
+# Keywords (impl, pub, fn, let, if, while)
+HL_KEYWORD1_FG: 234,105,98  # red (#ea6962)
+HL_KEYWORD1_BG: 27,27,27  # bg_dim (#1b1b1b)
+
+# Secondary Keywords (trait, move, mut)
+HL_KEYWORD2_FG: 234,105,98  # red (#ea6962)
+HL_KEYWORD2_BG: 27,27,27  # bg_dim (#1b1b1b)
+
+# Tertiary Keywords
+HL_KEYWORD3_FG: 234,105,98  # red (#ea6962)
+HL_KEYWORD3_BG: 27,27,27  # bg_dim (#1b1b1b)
+
+# Types (Dispatcher, Self, Output, Duration)
+HL_TYPE_FG: 216,166,87  # yellow (#d8a657)
+HL_TYPE_BG: 27,27,27  # bg_dim (#1b1b1b)
+
+# Function calls and methods
+HL_BUILTIN_FG: 169,182,101  # green (#a9b665)
+HL_BUILTIN_BG: 27,27,27  # bg_dim (#1b1b1b)
+
+# Strings
+HL_STRING_FG: 216,166,87  # yellow (#d8a657)
+HL_STRING_BG: 27,27,27  # bg_dim (#1b1b1b)
+
+# Numbers
+HL_NUMBER_FG: 211,134,155  # purple (#d3869b)
+HL_NUMBER_BG: 27,27,27  # bg_dim (#1b1b1b)
+
+# Search Matches - using visual highlighting
+HL_MATCH_FG: 221,199,161  # fg1 (#ddc7a1)
+HL_MATCH_BG: 55,65,65  # bg_visual_blue (#374141)
+
+# --- UI Elements ---
+UI_BACKGROUND_BG: 27,27,27         # bg_dim (#1b1b1b) - Editor background
+UI_LINENO_FG: 124,111,100          # grey0 (#7c6f64) - Line numbers
+UI_TILDE_FG: 125,174,163           # blue (#7daea3) - Tildes for empty lines
+
+# Sstatus bar and message bar colors
+UI_STATUS_FG: 221,199,161          # fg1 (#ddc7a1) - Default status text
+UI_STATUS_BG: 50,48,47             # bg1 (#32302f) - Default status background (for padding)
+UI_MESSAGE_FG: 221,199,161         # fg1 (#ddc7a1) - Message text
+UI_MESSAGE_BG: 27,27,27            # bg_dim (#1b1b1b) - Message background
+
+# Mode Segment (e.g., NORMAL, INSERT) - Green background for NORMAL
+UI_STATUS_MODE_FG: 27,27,27         # bg_dim (#1b1b1b) - Dark text on bright bg
+UI_STATUS_MODE_BG: 169,182,101      # green (#a9b665) - Green background
+
+# File Info Segment (Filename, modified status) - Using a slightly different BG
+UI_STATUS_FILE_FG: 221,199,161      # fg1 (#ddc7a1) - Standard text color
+UI_STATUS_FILE_BG: 55,65,65         # bg_visual_blue (#374141) - Slightly distinct background
+
+# File Type Segment (e.g., c, txt) - Matching the File Info segment BG
+UI_STATUS_FT_FG: 221,199,161        # fg1 (#ddc7a1) - Standard text color
+UI_STATUS_FT_BG: 55,65,65           # bg_visual_blue (#374141) - Matching file info BG
+
+# Position Segment (Line:Col %) - Using Blue background
+UI_STATUS_POS_FG: 27,27,27          # bg_dim (#1b1b1b) - Dark text on bright bg
+UI_STATUS_POS_BG: 125,174,163       # blue (#7daea3) - Blue background
+
+# Info Segment (Directory path, Time) - Using a darker background
+UI_STATUS_INFO_FG: 221,199,161      # fg1 (#ddc7a1) - Standard text color
+UI_STATUS_INFO_BG: 40,40,40         # bg0 (#282828) - Darker background for contrast

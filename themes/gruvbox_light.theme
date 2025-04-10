@@ -1,0 +1,97 @@
+# Kilo Gruvbox Material Light Theme
+# Based on standard Gruvbox Material palette: https://github.com/sainnhe/gruvbox-material
+name: Gruvbox Material Light
+
+# --- Palette Reference (Approximate RGB for Light Theme) ---
+# bg0_s: 245,235,208 (#f5ebd0) - Editor background
+# bg1:   235,219,178 (#ebdbb2)
+# bg2:   213,196,161 (#d5c4a1) - Original Status BG
+# bg3:   189,174,147 (#bdae93)
+# fg0:   60,56,54   (#3c3836)
+# fg1:   80,73,69   (#504945) - Standard dark FG (using 92,83,72 based on original input where appropriate)
+# gray:  146,131,116 (#928374) - Comments
+# red:   204,36,29   (#cc241d)
+# orange:214,93,14   (#d65d0e)
+# yellow:215,153,33  (#d79921)
+# green: 152,151,26  (#98971a)
+# aqua:  104,157,106 (#689d6a)
+# blue:  69,133,136  (#458588)
+# purple:177,98,134  (#b16286)
+
+# --- Syntax Highlighting (FG = Foreground, BG = Background) ---
+# Background is bg0_s (soft light variant)
+
+# Normal text (variables, punctuation) - Using original fg1 choice
+HL_NORMAL_FG: 92,83,72     # Original fg1 (#5c5348)
+HL_NORMAL_BG: 245,235,208  # bg0_s (#f5ebd0)
+
+# Comments - gray (Standard, good contrast)
+HL_COMMENT_FG: 146,131,116 # gray (#928374)
+HL_COMMENT_BG: 245,235,208 # bg0_s (#f5ebd0)
+HL_MLCOMMENT_FG: 146,131,116 # gray (#928374)
+HL_MLCOMMENT_BG: 245,235,208 # bg0_s (#f5ebd0)
+
+# Primary Keywords (if, while, fn, struct, let, etc) - purple (Good contrast)
+HL_KEYWORD1_FG: 177,98,134 # purple (#b16286)
+HL_KEYWORD1_BG: 245,235,208 # bg0_s (#f5ebd0)
+
+# Secondary Keywords (return, break, continue, static, const?) - red (Good contrast)
+HL_KEYWORD2_FG: 204,36,29  # red (#cc241d)
+HL_KEYWORD2_BG: 245,235,208 # bg0_s (#f5ebd0)
+
+# Tertiary Keywords (Maybe constants like TRUE/FALSE if defined?) - orange (Good contrast)
+HL_KEYWORD3_FG: 214,93,14  # orange (#d65d0e)
+HL_KEYWORD3_BG: 245,235,208 # bg0_s (#f5ebd0)
+
+# Types (Dispatcher, String, u32, etc) - Changed to blue for better contrast than aqua
+HL_TYPE_FG: 69,133,136   # blue (#458588) *Readability Adjustment*
+HL_TYPE_BG: 245,235,208 # bg0_s (#f5ebd0)
+
+# Builtins / Function Calls / Methods - Changed to purple for better contrast than yellow
+HL_BUILTIN_FG: 177,98,134 # purple (#b16286) *Readability Adjustment*
+HL_BUILTIN_BG: 245,235,208 # bg0_s (#f5ebd0)
+
+# Strings - green (Acceptable contrast)
+HL_STRING_FG: 152,151,26 # green (#98971a)
+HL_STRING_BG: 245,235,208 # bg0_s (#f5ebd0)
+
+# Numbers - purple (Good contrast)
+HL_NUMBER_FG: 177,98,134 # purple (#b16286)
+HL_NUMBER_BG: 245,235,208 # bg0_s (#f5ebd0)
+
+# Search Matches - Light text (bg0_s) on a darker mid-tone background (bg3)
+HL_MATCH_FG: 245,235,208 # bg0_s (#f5ebd0)
+HL_MATCH_BG: 189,174,147 # bg3 (#bdae93) - Changed from 189,174,158 to standard bg3
+
+# --- UI Elements ---
+UI_BACKGROUND_BG: 245,235,208  # Editor background (bg0_s)
+UI_LINENO_FG: 168,153,132  # Line numbers FG (bg4 / gray0)
+UI_TILDE_FG: 69,133,136   # Color for '~' chars (blue)
+UI_MESSAGE_FG: 92,83,72    # Message bar FG (original fg1)
+UI_MESSAGE_BG: 245,235,208  # Message bar BG (bg0_s - same as editor)
+
+# --- Status Bar Segment Styling ---
+
+# Default Status Bar colors (from original)
+UI_STATUS_FG: 92,83,72     # Status bar FG (original fg1)
+UI_STATUS_BG: 213,196,161  # Status bar BG (bg2)
+
+# Mode Segment (e.g., NORMAL, INSERT) - Green background, light text
+UI_STATUS_MODE_FG: 245,235,208 # bg0_s (#f5ebd0) - Light text
+UI_STATUS_MODE_BG: 152,151,26  # green (#98971a) - Green background
+
+# File Info Segment (Filename, modified status) - Lighter BG (bg1), original dark text
+UI_STATUS_FILE_FG: 92,83,72    # original fg1 (#5c5348)
+UI_STATUS_FILE_BG: 235,219,178 # bg1 (#ebdbb2) - Lighter background than default status
+
+# File Type Segment (e.g., c, txt) - Matching the File Info segment
+UI_STATUS_FT_FG: 92,83,72    # original fg1 (#5c5348)
+UI_STATUS_FT_BG: 235,219,178 # bg1 (#ebdbb2) - Matching File Info BG
+
+# Position Segment (Line:Col %) - Aqua background, light text
+UI_STATUS_POS_FG: 245,235,208 # bg0_s (#f5ebd0) - Light text
+UI_STATUS_POS_BG: 104,157,106 # aqua (#689d6a) - Aqua background
+
+# Info Segment (Directory path, Time) - Matching default status colors
+UI_STATUS_INFO_FG: 92,83,72    # original fg1 (#5c5348)
+UI_STATUS_INFO_BG: 213,196,161 # bg2 (#d5c4a1) - Default status background

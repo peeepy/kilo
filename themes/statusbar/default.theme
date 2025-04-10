@@ -1,0 +1,225 @@
+local statusbar = require("lua.modules.statusbar")
+
+local M = {}
+
+-- Enhanced colour palette using Catppuccin Frappé
+local palette = {
+  -- Base colours
+  bg = ui_status_bg,          -- e.g., #303446 (Frappé Base) - Main background
+  fg = ui_status_fg,          -- e.g., #c6d0f5 (Frappé Text) - Default text
+
+  -- Mode backgrounds
+  normal_fg = "#babbf1",      -- Frappé Lavender
+  normal_bg = "#414559",      -- Frappé Surface0
+  insert_fg = "#e78284",      -- Frappé Red
+  insert_bg = "#51576d",      -- Frappé Surface1
+  visual_fg = "#ca9ee6",      -- Frappé Mauve
+  visual_bg = "#414559",      -- Frappé Surface0
+
+  -- Component colours & backgrounds
+  git_fg = "#81c8be",         -- Frappé Teal
+  git_bg = "#292c3c",         -- Frappé Mantle (Distinct BG for Git)
+
+  fileinfo_fg = "#c6d0f5",    -- Frappé Text (Used for general file info)
+  fileinfo_bg = ui_status_bg,  -- Frappé Base (Keep file info on main bg)
+  file_mod_fg = "#e5c890",    -- Frappé Yellow (Modified file text)
+
+  pos_fg = "#a5adce",         -- Frappé Subtext0
+  pos_bg = "#292c3c",         -- Frappé Mantle (Distinct BG for Pos/Time)
+  time_fg = "#eebebe",        -- Frappé Flamingo
+  time_bg = "#292c3c",         -- Frappé Mantle (Distinct BG for Pos/Time)
+
+  -- Separator component colours
+  dark_sep_fg = "#51576d",    -- Frappé Surface1 (For thin separator characters)
+  -- Subtle separator fg uses mode_bg (defined later)
+}
+
+-- Powerline-style separators
+local separators = {
+  right = "\u{e0b0}", right_thin = "\u{e0b1}",
+  left = "\u{e0b2}", left_thin = "\u{e0b3}",
+  block_right = "\u{e0bc}", block_left = "\u{e0be}",
+}
+
+-- Icons
+local icons = {
+  mode = "●", git = "", folder = "", file = "",
+  modified = "●", filetype = "∷", lines = "☰",
+  location = "◆", clock = "◷",
+}
+
+-- Text styling escape codes
+local style = {
+  bold = "\27[1m", italic = "\27[3m",
+  reset_all = "\27[0m", reset_bold = "\27[22m", reset_italic = "\27[23m",
+}
+
+-- Single-line statusbar configuration function
+M.statusbar_config = function()
+  -- Get state
+  local mode = kilo.get_mode and kilo.get_mode() or "NORMAL"
+  local filename = kilo.get_filename() or "[No Name]"
+  local dirname = kilo.get_dirname()
+  local is_mod = kilo.is_modified()
+  local line = kilo.get_cursor_line() or 0
+  local col = kilo.get_cursor_col() or 0
+  local total_lines = kilo.get_total_lines and kilo.get_total_lines() or 0
+  local percent = kilo.get_scroll_percent() or 0
+  local time_str = os.date("%H:%M")
+  local ft_icon = kilo.get_filetype_icon() or icons.file
+  local ft_name = kilo.get_filetype_name and kilo.get_filetype_name() or ""
+  local git_branch = kilo.get_git_branch and kilo.get_git_branch()
+
+  -- Mode colours
+  local mode_fg, mode_bg -- mode_bg will also be used for subtle separator color
+  if mode == "INSERT" then
+    mode_fg, mode_bg = palette.insert_fg, palette.insert_bg
+  elseif mode == "VISUAL" or mode == "VISUAL_LINE" then
+    mode_fg, mode_bg = palette.visual_fg, palette.visual_bg
+  else -- NORMAL
+    mode_fg, mode_bg = palette.normal_fg, palette.normal_bg
+  end
+
+  -- Define subtle separator color based on current mode_bg for consistency
+  local subtle_sep_fg = mode_bg
+
+  -- Modified indicator
+  local file_indicators = ""
+  if is_mod then
+    file_indicators = " " .. style.bold .. icons.modified .. style.reset_bold
+  end
+
+  local segments = {}
+
+  -- === Left Segments ===
+
+  -- MODE
+  table.insert(segments, {
+    text = " " .. style.bold .. icons.mode .. " " .. mode .. style.reset_bold .. " ",
+    fg = mode_fg, bg = mode_bg, align = "left", line = 1
+  })
+
+  -- SEPARATOR MODE -> GIT (Powerline: fg=next_bg, bg=current_bg)
+  table.insert(segments, {
+    text = separators.right,
+    fg = palette.git_bg, -- Next segment bg (Mantle)
+    bg = mode_bg,        -- Current segment bg (Surface0/1)
+    align = "left", line = 1
+  })
+
+  -- GIT
+  if git_branch then
+    table.insert(segments, {
+      text = " " .. style.italic .. icons.git .. " " .. git_branch .. style.reset_italic .. " ",
+      fg = palette.git_fg, bg = palette.git_bg, align = "left", line = 1
+    })
+
+    -- SEPARATOR GIT -> File Info (Powerline: fg=next_bg, bg=current_bg)
+    table.insert(segments, {
+      text = separators.right,
+      fg = palette.fileinfo_bg, -- Next segment bg (Base)
+      bg = palette.git_bg,      -- Current segment bg (Mantle)
+      align = "left", line = 1
+    })
+  end
+
+  -- DIRECTORY
+  if dirname then
+    table.insert(segments, {
+      text = " " .. icons.folder .. " " .. style.italic .. dirname .. style.reset_italic .. " ",
+      fg = palette.fileinfo_fg, bg = palette.fileinfo_bg, align = "left", line = 1
+    })
+
+    -- Thin separator within File Info (Simple colored char)
+    table.insert(segments, {
+      text = separators.right_thin,
+      fg = palette.dark_sep_fg,
+      bg = palette.fileinfo_bg, -- Use the fileinfo background
+      align = "left", line = 1
+    })
+  end
+
+  -- FILENAME
+  table.insert(segments, {
+    text = " " .. ft_icon .. " " .. style.bold .. filename .. style.reset_bold .. file_indicators .. " ",
+    fg = is_mod and palette.file_mod_fg or palette.fileinfo_fg, -- Use fileinfo_fg default
+    bg = palette.fileinfo_bg, align = "left", line = 1
+  })
+
+  -- FILETYPE
+  if ft_name ~= "" then
+    -- Thin separator within File Info (Simple colored char)
+    table.insert(segments, {
+      text = separators.right_thin,
+      fg = palette.dark_sep_fg,
+      bg = palette.fileinfo_bg, -- Use the fileinfo background
+      align = "left", line = 1
+    })
+    table.insert(segments, {
+      text = " " .. icons.filetype .. " " .. style.italic .. ft_name .. style.reset_italic .. " ",
+      fg = palette.fileinfo_fg, bg = palette.fileinfo_bg, align = "left", line = 1
+    })
+  end
+
+  -- SEPARATOR File Info -> Filler (Subtle colored arrow)
+  -- Needed because fileinfo_bg and palette.bg are the same.
+  table.insert(segments, {
+      text = separators.right,
+      fg = subtle_sep_fg,      -- Use subtle color for the arrow char
+      bg = palette.fileinfo_bg, -- Arrow sits on current bg (which = palette.bg)
+      align = "left", line = 1
+  })
+
+
+  -- === Right Segments ===
+
+  -- SEPARATOR Filler -> Position (Powerline: fg=current_bg(filler), bg=next_bg(pos))
+  -- Uses left arrow, fg is color of the segment it points away from (palette.bg)
+  table.insert(segments, {
+    text = separators.left,
+    fg = palette.bg,      -- Filler space bg (Base)
+    bg = palette.pos_bg,  -- Next segment bg (Mantle)
+    align = "right", line = 1
+  })
+
+  -- POSITION
+  local pos_text
+  local pos_icon = icons.location
+  if total_lines > 0 then
+    pos_icon = icons.lines
+    pos_text = string.format("%d/%d:%d (%d%%)", line, total_lines, col, percent)
+  else
+    pos_text = string.format("%d:%d (%d%%)", line, col, percent)
+  end
+  table.insert(segments, {
+    text = " " .. pos_icon .. " " .. pos_text .. " ",
+    fg = palette.pos_fg, bg = palette.pos_bg, align = "right", line = 1
+  })
+
+  -- SEPARATOR Position -> Time (Subtle colored arrow)
+  -- Needed because pos_bg and time_bg are the same (Mantle)
+  table.insert(segments, {
+    text = separators.left,
+    fg = subtle_sep_fg, -- Use subtle color for the arrow char
+    bg = palette.pos_bg, -- Arrow sits on current bg (Mantle)
+    align = "right", line = 1
+  })
+
+  -- TIME
+  table.insert(segments, {
+    text = " " .. icons.clock .. " " .. style.italic .. time_str .. style.reset_italic .. " ",
+    fg = palette.time_fg, bg = palette.time_bg, align = "right", line = 1
+  })
+
+  -- === Options ===
+  local options = { height = 1, bg = palette.bg, fg = palette.fg }
+
+  return segments, options
+end
+
+M.palette = palette
+M.separators = separators
+M.icons = icons
+M.style = style
+
+return M

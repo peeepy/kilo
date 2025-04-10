@@ -14,6 +14,10 @@
 #include <errno.h>      // For errno, EAGAIN
 #include <dirent.h> // For directory handling
 #include "debug.h"
+#include "ui.h"
+#include "dirtree.h"
+#include "components.h"
+
 
 /*** defines ***/
 
@@ -31,6 +35,7 @@
 
 #define KILO_LINE_NUMBER_WIDTH 6
 
+#define MAX_ACTIVE_OVERLAYS 3
 
 typedef struct {
     char *name;
@@ -145,9 +150,28 @@ struct editorSyntax {
 };
 
 
+// Structure to hold a single row of text in the editor
+typedef struct erow {
+	int idx;
+  int size;       // Number of characters in the row
+  int rsize;
+  char *chars;    // Pointer to the character data for the row
+  char *render;
+  unsigned char *hl;
+	int hl_open_comment;
+} erow;
+
+
+
+
+
 typedef struct editorBuffer {
     char *filename;     // Full path to the file
-    // Add other buffer-specific data you need:
+    char *dirname;           // Directory containing buf->filename
+    int parent_dir_fd; // file descriptor of parent directory
+    bool owns_parent_dir_fd; // Does this buffer own the fd (needs closing)?
+    DirTreeNode *tree_node; // Reference to this file's node in the dir tree
+
     int dirty;          // Modified status
     erow *row;       // Rows specific to this buffer
     int numrows;
@@ -160,16 +184,23 @@ typedef struct editorBuffer {
 } editorBuffer;
 
 
-// Structure to hold a single row of text in the editor
-typedef struct erow {
-	int idx;
-  int size;       // Number of characters in the row
-  int rsize;
-  char *chars;    // Pointer to the character data for the row
-  char *render;
-  unsigned char *hl;
-	int hl_open_comment;
-} erow;
+typedef struct OverlayInstance {
+  bool is_active; // (Maybe redundant if only active ones are in the list);
+  void *state; // (Pointer to the specific state struct, e.g., NavigatorState*, CommandPaletteState*)
+  void (*draw_func)(struct abuf *ab, void *state); //(Pointer to the C function that draws this specific type of overlay)
+  // Maybe other common fields like z-index?
+} OverlayInstance;
+
+
+typedef enum PanelDisplayMode { PANEL_MODE_NONE, PANEL_MODE_LEFT, PANEL_MODE_RIGHT, PANEL_MODE_FLOAT } PanelDisplayMode;
+
+typedef struct DirTreeState {
+  bool active;
+} DirTreeState;
+
+typedef struct NavigatorState {
+  bool active;
+} NavigatorState; 
 
 // Global structure to hold the editor's state
 struct editorConfig {
@@ -180,10 +211,14 @@ struct editorConfig {
   int screenrows;         // Number of rows the terminal window can display
   int screencols;         // Number of columns the terminal window can display
   int numrows;            // Total number of rows in the file buffer
+  int content_start_row;    // Absolute screen row where text area begins (below top components)
+  int content_width;
+  int content_start_col;
+  int total_rows;         // Store total terminal height
   erow *row;              // Pointer to an array of erow structures (the file content)
   int dirty;              // Whether the file has been modified externally since opening/saving
   char *filename;         // Pointer to the filename
-  char *dirname;          // Pointer to the dirname
+  char *project_root; // Store the initial working directory/project root -- NEW SINCE DIRTREE.C --
   char statusmsg[80];
   time_t statusmsg_time;
   struct editorSyntax *syntax; // Pointer to the syntax highlighting struct
@@ -196,6 +231,29 @@ struct editorConfig {
   editorBuffer *buffer_list_head; // Head of the linked list of all open buffers
   editorBuffer *current_buffer;  // Pointer to the currently active buffer
   int num_buffers;              // Count of open buffers
+    // UI Component Registry fields
+  UIComponent *ui_components;
+  int ui_component_count;
+  int ui_component_capacity;
+  // --- State for Static Directory Panel ---
+  DirTreeState panel_state;
+  bool panel_visible;           // Is the panel configured to be shown?
+  PanelDisplayMode panel_mode; // Current rendering mode (LEFT/RIGHT/FLOAT/NONE)
+  DirTreeNode *panel_root_node; // Root node for the panel (e.g., project root)
+  DirTreeNode *panel_current_dir_node; // Node for E.current_buffer's dir (might be same as root or descendant)
+  int panel_view_offset;       // Scroll offset in the panel's display list
+  int panel_selected_index; // If you add selection later
+  int panel_render_width;      // Current width being used (for reserving cols)
+
+  // --- State for Searchable File Navigator Overlay ---
+  NavigatorState navigator_state;
+  bool navigator_active;           // Is the overlay currently visible?
+  DirTreeNode *navigator_base_node; // DirTreeNode the navigator is currently showing/searching
+  char *navigator_search_query; // If doing text filtering later
+  int navigator_selected_index;    // Index in the list shown by the navigator
+  int navigator_view_offset;       // Scroll offset in the list shown by the navigator
+  OverlayInstance active_overlays[MAX_ACTIVE_OVERLAYS];
+  int num_active_overlays;
 };
 
 extern struct editorConfig E;
@@ -208,6 +266,7 @@ struct abuf {
 
 
 /*** prototypes ***/
+
 // --- Terminal ---
 void die(const char* s);
 void disableRawMode();
@@ -242,11 +301,15 @@ void editorInsertNewline();
 void editorDelChar();
 
 // --- File I/O ---
-char *editorRowsToString(int *buflen);
-void editorOpen(char *filename);
-void editorSave();
-char *getEditingDirname(const char *filename);
-char *findBasename(const char *path);
+char *editorRowsToString(editorBuffer *buf, int *buflen); // Updated: added editorBuffer *
+void editorSave(void);                                  // Takes no arguments
+editorBuffer *editorOpen(char *filename, DirTreeNode*);                 // Updated: returns editorBuffer *
+char *getEditingDirname(const char *filename);          // Returns allocated string
+const char *findBasename(const char *path);             // Updated: returns const char *
+
+// void editorFindNextBuffer(void);
+// void editorFindPrevBuffer(void);
+// void editorCloseCurrentBuffer(void);
 
 // --- Find ---
 void editorFind();
@@ -254,14 +317,25 @@ void editorFindCallback(char *query, int key);
 
 // --- Output ---
 void editorScroll();
-void editorDrawRows(struct abuf *ab);
+void editorDrawRows(struct abuf *ab, int start_row, int start_col, int height, int width);
 void editorDrawStatusBar(struct abuf *ab);
+void editorDrawDefaultTabline(struct abuf *ab);
+void editorDrawTabline(struct abuf *ab);
 void editorDrawMessageBar(struct abuf *ab);
 void editorRefreshScreen();
 void editorSetStatusMessage(const char *fmt, ...);
 void editorClearStatusMessage();
 void abAppend(struct abuf *ab, const char *s, int len);
 void abFree(struct abuf *ab);
+void editorDrawDirTreeFloating(struct abuf *ab, void *state /* DirTreeState* */);
+void editorDrawNavigator(struct abuf *ab, void *state /* NavigatorState* */);
+void editorDrawDirTreeFixed(struct abuf *ab, int x, int y, int w, int h);
+int editorDrawUiElement(struct abuf *ab, int lua_callback_ref);
+// void editorApplyLuaLayout();
+void editorSetPanelMode(PanelDisplayMode new_mode);
+int activateOverlay(void (*draw_func)(struct abuf *, void *), void *state);
+int deactivateOverlay(void *state);
+
 
 // --- Themes -- 
 void loadTheme(const char *theme_name);
@@ -279,6 +353,53 @@ void initEditor();
 
 // Debug
 void editorDrawDebugOverlay(struct abuf *ab);
+
+/* Buffer Management Functions */
+
+/**
+ * Create a new buffer.
+ * @return A pointer to a newly allocated editorBuffer with default values
+ */
+editorBuffer *editorCreateBuffer(void);
+
+/**
+ * Adds a new buffer to the buffer list.
+ * @param buf The new buffer to add
+ */
+void editorAddBuffer(editorBuffer *buf);
+
+/**
+ * Switches to the specified buffer, saving current state.
+ * @param targetBuffer The buffer to switch to
+ */
+void editorSwitchBuffer(editorBuffer *targetBuffer);
+
+/**
+ * Find the next buffer in the list and switch to it.
+ */
+void editorFindNextBuffer(void);
+
+/**
+ * Find the previous buffer in the list and switch to it.
+ */
+void editorFindPrevBuffer(void);
+
+/**
+ * Free a buffer's resources and remove it from the list.
+ * @param bufferToClose The buffer to close and free
+ */
+void editorCloseBuffer(editorBuffer *bufferToClose);
+
+/**
+ * Close the current buffer.
+ */
+void editorCloseCurrentBuffer(void);
+
+/**
+ * Helper function to insert a row into a specific buffer
+ */
+void editorInsertRowToBuffer(editorBuffer *buf, int at, char *s, size_t len);
+
 
 #endif // KILO_H_
 

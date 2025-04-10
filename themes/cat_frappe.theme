@@ -1,0 +1,109 @@
+# Kilo Catppuccin Frappé Theme
+# Based on standard Catppuccin Frappé palette: https://github.com/catppuccin/catppuccin
+name: Catppuccin Frappé
+
+# --- Palette Reference (Frappé - Approx RGB) ---
+# Rosewater: 242,213,207 (#f2d5cf)
+# Flamingo:  238,190,190 (#eebebe)
+# Pink:      244,184,228 (#f4b8e4)
+# Mauve:     202,158,230 (#ca9ee6) - Keywords
+# Red:       231,130,132 (#e78284) - Keywords 2, Errors
+# Maroon:    234,153,156 (#ea999c)
+# Peach:     239,159,118 (#ef9f76) - Numbers, Constants
+# Yellow:    229,200,144 (#e5c890) - Types, Classes
+# Green:     166,209,137 (#a6d189) - Strings
+# Teal:      129,200,190 (#81c8be)
+# Sky:       153,209,219 (#99d1db) - UI Accent
+# Sapphire:  133,193,220 (#85c1dc)
+# Blue:      140,170,238 (#8caaee) - Functions, Builtins
+# Lavender:  186,187,241 (#babbf1)
+# Text:      198,208,245 (#c6d0f5) - Main text
+# Subtext1:  181,191,226 (#b5bfe2)
+# Subtext0:  165,173,206 (#a5adce)
+# Overlay2:  148,156,187 (#949cbb)
+# Overlay1:  131,139,167 (#838ba7)
+# Overlay0:  115,121,148 (#737994) - Comments
+# Surface2:  98,104,128  (#626880) - Highlight BG
+# Surface1:  81,87,109   (#51576d) - Line numbers
+# Surface0:  65,69,89    (#414559) - UI BG Element
+# Base:      48,52,70    (#303446) - Editor Background
+# Mantle:    41,44,60    (#292c3c) - Status Bar Background
+# Crust:     35,38,52    (#232634)
+
+# --- Syntax Highlighting (FG = Foreground, BG = Background) ---
+# Background is Base
+
+# Normal text
+HL_NORMAL_FG: 198,208,245  # Text (#c6d0f5)
+HL_NORMAL_BG: 48,52,70     # Base (#303446)
+
+# Comments
+HL_COMMENT_FG: 115,121,148 # Overlay0 (#737994)
+HL_COMMENT_BG: 48,52,70     # Base (#303446)
+HL_MLCOMMENT_FG: 115,121,148 # Overlay0 (#737994)
+HL_MLCOMMENT_BG: 48,52,70     # Base (#303446)
+
+# Primary Keywords (if, while, fn, struct, let, etc) - Mauve
+HL_KEYWORD1_FG: 202,158,230 # Mauve (#ca9ee6)
+HL_KEYWORD1_BG: 48,52,70     # Base (#303446)
+
+# Secondary Keywords (return, break, continue, static, const?) - Red
+HL_KEYWORD2_FG: 231,130,132 # Red (#e78284)
+HL_KEYWORD2_BG: 48,52,70     # Base (#303446)
+
+# Tertiary Keywords (Constants like TRUE/FALSE) - Peach
+HL_KEYWORD3_FG: 239,159,118 # Peach (#ef9f76)
+HL_KEYWORD3_BG: 48,52,70     # Base (#303446)
+
+# Types (Dispatcher, String, u32, etc) - Yellow
+HL_TYPE_FG: 229,200,144 # Yellow (#e5c890)
+HL_TYPE_BG: 48,52,70     # Base (#303446)
+
+# Builtins / Function Calls / Methods - Blue
+HL_BUILTIN_FG: 140,170,238 # Blue (#8caaee)
+HL_BUILTIN_BG: 48,52,70     # Base (#303446)
+
+# Strings - Green
+HL_STRING_FG: 166,209,137 # Green (#a6d189)
+HL_STRING_BG: 48,52,70     # Base (#303446)
+
+# Numbers - Peach
+HL_NUMBER_FG: 239,159,118 # Peach (#ef9f76)
+HL_NUMBER_BG: 48,52,70     # Base (#303446)
+
+# Search Matches - Dark text on a lighter surface background
+HL_MATCH_FG: 48,52,70     # Base (#303446)
+HL_MATCH_BG: 98,104,128  # Surface2 (#626880)
+
+# --- UI Elements ---
+UI_BACKGROUND_BG: 48,52,70     # Editor background (Base)
+UI_LINENO_FG: 81,87,109   # Line numbers FG (Surface1)
+UI_TILDE_FG: 65,69,89    # Color for '~' chars (Surface0) - Subtle
+UI_MESSAGE_FG: 198,208,245 # Message bar FG (Text)
+UI_MESSAGE_BG: 41,44,60    # Message bar BG (Mantle) - Matches status bar
+
+# --- Status Bar Segment Styling (Inspired by Image) ---
+
+# Default Status Bar colors (Darker than editor BG)
+UI_STATUS_FG: 198,208,245 # Status bar default FG (Text)
+UI_STATUS_BG: 41,44,60    # Status bar default BG (Mantle)
+
+# Mode Segment (e.g., NORMAL, INSERT) - Mauve background, dark text
+UI_STATUS_MODE_FG: 48,52,70    # Base (#303446) - Dark text
+UI_STATUS_MODE_BG: 202,158,230 # Mauve (#ca9ee6) - Mauve background
+
+# File Info Segment (Filename, modified status) - Default BG, Text FG
+UI_STATUS_FILE_FG: 48,52,70    # Base (#303446) - Dark Text
+UI_STATUS_FILE_BG: 231,130,132 # Flamingo (#eebebe) - Default status background
+
+# File Type/Folder Segment (e.g., Directory path, c, txt / LSP indicator) - Sky text on Surface0 BG
+UI_STATUS_FT_FG: 48,52,70    # Base (#303446) - Dark Text
+UI_STATUS_FT_BG: 238,190,190 # Flamingo (#eebebe)
+
+# Position Segment (Line:Col %) - Default BG, Text FG
+UI_STATUS_POS_FG: 198,208,245 # Text (#c6d0f5)
+UI_STATUS_POS_BG: 41,44,60    # Mantle (#292c3c) - Default status background
+
+# Info Segment (Time / Git Branch) - Flamingo text on Default BG
+UI_STATUS_INFO_FG: 238,190,190 # Flamingo (#eebebe) - Flamingo text for Git/Info
+UI_STATUS_INFO_BG: 41,44,60    # Mantle (#292c3c) - Default status background
